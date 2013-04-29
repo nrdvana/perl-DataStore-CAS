@@ -1,9 +1,9 @@
 package DataStore::CAS::Virtual;
 use 5.008;
-use Moo;
+use Moo 1.000007;
 use Carp;
 use Try::Tiny;
-use Digest;
+use Digest 1.16;
 
 our $VERSION= '0.0100';
 

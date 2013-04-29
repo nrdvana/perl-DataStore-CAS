@@ -1,8 +1,12 @@
 package DataStore::CAS::Simple;
 use 5.008;
-use Moo;
+use Moo 1.000007;
 use Carp;
 use Try::Tiny;
+use Digest 1.16 ();
+use File::Spec 3.33;
+use File::Spec::Functions 'catfile', 'catdir', 'canonpath';
+use File::Temp 0.22 ();
 
 our $VERSION = '0.0100';
 
@@ -33,12 +37,6 @@ compression algorithms on the data.
 
 TODO: write DataStore::CAS::Compressor or DataStore::CAS::Splitter
 for those features.
-
-=cut
-
-use Digest ();
-use File::Spec::Functions 'catfile', 'catdir', 'canonpath';
-use File::Temp ();
 
 =head1 ATTRIBUTES
 
