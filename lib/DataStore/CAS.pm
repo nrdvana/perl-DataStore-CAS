@@ -8,9 +8,7 @@ require Symbol;
 
 our $VERSION= '0.0100';
 
-=head1 NAME
-
-DataStore::CAS - Abstract base class for Content Addressable Storage
+# ABSTRACT: Abstract base class for Content Addressable Storage
 
 =head1 DESCRIPTION
 

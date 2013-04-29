@@ -7,9 +7,7 @@ use Digest 1.16;
 
 our $VERSION= '0.0100';
 
-=head1 NAME
-
-DataStore::CAS::Virtual
+# ABSTRACT: In-memory CAS for debugging and testing
 
 =head1 DESCRIPTION
 

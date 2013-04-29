@@ -10,9 +10,7 @@ use File::Temp 0.22 ();
 
 our $VERSION = '0.0100';
 
-=head1 NAME
-
-DataStore::CAS::Simple - Simple file/directory based CAS implementation
+# ABSTRACT: Simple file/directory based CAS implementation
 
 =head1 DESCRIPTION
 
