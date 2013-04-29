@@ -77,4 +77,14 @@ sub iterator {
 	sub { shift @entries };
 }
 
+sub delete {
+	my ($self, $hash, $flags)= @_;
+	my $deleted= ($flags && $flags->{dry_run})?
+		exists $self->entries->{$hash}
+		: defined delete $self->entries->{$hash};
+	$flags->{stats}{$deleted? 'delete_count' : 'delete_missing'}++
+		if $flags && $flags->{stats};
+	$deleted;
+}
+
 1;

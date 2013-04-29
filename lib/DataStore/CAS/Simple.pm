@@ -517,6 +517,10 @@ sub iterator {
 	...
 }
 
+sub delete {
+	...
+}
+
 # This can be called as class or instance method.
 # When called as an instance method, '$digest_name' is mandatory,
 #   otherwise it is unneeded.

@@ -25,8 +25,8 @@ tiny compared to all the permutations of bytes that they can represent.
 
 Perl uses the term 'hash' to refer to a mapping of key/value pairs, which
 creates a little confusion.  The documentation of this and related modules
-therefore tries to use the phrase "digest hash" to clarify when we are
-referring to the output of a digest function vs. a perl key-value mapping.
+try to use the phrase "digest hash" to clarify when we are referring to the
+output of a digest function vs. a perl key-value mapping.
 
 =head1 PURPOSE
 
@@ -130,16 +130,17 @@ Dies if it encounters anything else.
 
 =back
 
-The return value is the digest's hash of the stored data.
+The return value is the digest hash of the stored data.
 
-For %flags, see method new_write_handle.
+See '->new_write_handle' for the discussion of 'flags'.
 
 Example:
 
   my $stats= {};
   $cas->put("abcdef", { stats => $stats });
+  $cas->put(IO::File->new('~/file','r'), { stats => $stats });
   $cas->put(\*STDIN, { stats => $stats });
-  $cas->put("42" x 42, { stats => $stats });
+  $cas->put(Path::Class::file('~/file'), { stats => $stats });
   use Data::Printer;
   p $stats;
 
@@ -159,9 +160,9 @@ If scalar is a unicode string, it is first converted to an array of UTF-8
 bytes. Beware that when you next call 'get', reading from the filehandle
 will give you bytes and not the original Unicode scalar.
 
-Returns the digest's hash of the array of bytes.
+Returns the digest hash of the array of bytes.
 
-See '->put' for the discussion of 'flags'.
+See '->new_write_handle' for the discussion of 'flags'.
 
 =cut
 
@@ -187,9 +188,9 @@ Insert a file from the filesystem, or from another CAS instance.
 Default implementation simply opens the named file, and passes it to
 put_handle.
 
-Returns the digest's hash of the data stored.
+Returns the digest hash of the data stored.
 
-See '->put' for the discussion of 'flags'.
+See '->new_write_handle' for the discussion of 'flags'.
 
 Additional flags:
 
@@ -200,7 +201,8 @@ Additional flags:
 If hardlink is true, and the CAS is backed by plain files, it will hardlink
 the file directly into the CAS.
 
-This reduces the integrity of your CAS; use with care.
+This reduces the integrity of your CAS; use with care.  You can use the
+C<->validate> method later to check for corruption.
 
 =item known_hashes => \%algorithm_digests
 
@@ -214,7 +216,7 @@ This reduces the integrity of your CAS; use with care.
 =item reuse_hash
 
 This is a shortcut for known_hashes if you specify an instance of
-DataStore::CAS::File.  It builds a known_hashes one one item using the source
+DataStore::CAS::File.  It builds a known_hashes of one item using the source
 CAS's digest algorithm.
 
 =back
@@ -321,11 +323,8 @@ operations when you are done.
 =head2 commit_write_handle( $handle )
 
 This closes the given write-handle, and then finishes calculating its digest
-hash, and then stores it into the CAS.  It returns a DataStore::CAS::File
-object for the new file.
-
-The data will not actually be added to the CAS if you specified the 'dry_run'
-flag when creating the handle.
+hash, and then stores it into the CAS (unless the handle was created with the
+dry_run flag).  It returns the digest_hash of the data.
 
 =cut
 
@@ -397,11 +396,40 @@ mark/sweep algorithm and then make use of 'delete'.
 
 Returns true if the item was actually deleted.
 
-No flags are yet implemented, though $flags{stats} will be supported.
+The optional 'flags' hashref can contain a wide variety of parameters, but
+these are supported by all CAS subclasses:
+
+=over
+
+=item dry_run => $bool
+
+Setting "dry_run" to true will run a simulation of the delete operation,
+without actually deleting anything.
+
+=item stats => \%stats_out
+
+Setting "stats" to a hashref will instruct the CAS implementation to return
+information about the operation within that supplied hashref.  Values in the
+hashref are amended or added to, so you may use the same stats hashref for
+multiple calls and then see the summary for all operations when you are done.
+
+=over
+
+=item delete_count
+
+The number of official entries deleted.
+
+=item delete_missing
+
+The number of entries that didn't exist.
+
+=back
+
+=back
 
 =cut
 
-sub delete { my ($digest_hash, $flags)= @_; ... }
+requires 'delete';
 
 =head2 iterator([ \%flags ])
 
@@ -442,7 +470,9 @@ are 'raw' by default.
 
 requires 'open_file';
 
-# File and Handle objects have DESTROY methods that call these
+# File and Handle objects have DESTROY methods that call these methods of
+# their associated CAS.  The CAS should implement these for cleanup of
+# temporary files, or etc.
 sub _file_destroy {}
 sub _handle_destroy {}
 
@@ -476,8 +506,8 @@ A convenience method to call '$file->store->open_file($file, \%flags)'
 
 =back
 
-Other methods may exist for the storage engine you are using; see the
-documentation for your particular store.
+Other attributes or methods may exist for the storage engine you are using;
+see the documentation for your particular store.
 
 =cut
 
@@ -591,10 +621,11 @@ sub CLOSE    { $_[0]->close }
 #
 
 sub readlines {
+	my $self= shift;
+	wantarray or !defined wantarray or Carp::croak "readlines called in scalar context";
 	my (@ret, $line);
-	wantarray or !defined wantarray or die "readlines called in scalar context";
 	push @ret, $line
-		while defined ($line= $_[0]->readline);
+		while defined ($line= $self->readline);
 	@ret;
 }
 
