@@ -476,6 +476,10 @@ requires 'open_file';
 sub _file_destroy {}
 sub _handle_destroy {}
 
+package DataStore::CAS::File;
+use strict;
+use warnings;
+
 =head1 FILE OBJECTS
 
 The 'get' method returns objects of type DataStore::CAS::File. (or a subclass)
@@ -510,10 +514,6 @@ Other attributes or methods may exist for the storage engine you are using;
 see the documentation for your particular store.
 
 =cut
-
-package DataStore::CAS::File;
-use strict;
-use warnings;
 
 our $VERSION= '0.0100';
 
@@ -674,7 +674,7 @@ use parent -norequire => 'DataStore::CAS::VirtualHandle';
 
 our $VERSION= '0.0100';
 
-# For write-handles, commit data to the CAS and return the File object for it.
+# For write-handles, commit data to the CAS and return the digest hash for it.
 sub commit   { $_[0]->_cas->_handle_commit(@_) }
 
 # These would happen anyway via the AUTOLOAD, but we enumerate them so that

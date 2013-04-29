@@ -7,10 +7,69 @@ use Digest;
 
 our $VERSION= '0.0100';
 
+=head1 NAME
+
+DataStore::CAS::Virtual
+
+=head1 DESCRIPTION
+
+This class implements an in-memory CAS, and is highly "hackable", mainly
+intended for writing test scenarios.
+
+=head1 ATTRIBUTES
+
+=head2 digest
+
+The Digest algorithm to use for C<put>.
+
+=head2 entries
+
+The actual perl-hashref of digest-hash/content pairs, which are set by 'put'
+and read by 'get'.  You can pre-populate this.  The digest-hashes are not
+checked for accuracy.
+
+=cut
+
 has digest  => ( is => 'ro', default => sub { 'SHA-1' } );
 has entries => ( is => 'rw', default => sub { {} } );
 
 with 'DataStore::CAS';
+
+=head1 METHODS
+
+=head2 get
+
+See L<DataStore::CAS>
+
+=head2 put_scalar
+
+See L<DataStore::CAS>
+
+This is optimized for directly writing a scalar to the ->entries attribute.
+
+=head2 new_write_handle
+
+See L<DataStore::CAS>
+
+=head2 commit_write_handle
+
+See L<DataStore::CAS>
+
+=head2 open_file
+
+See L<DataStore::CAS>
+
+=head2 iterator
+
+Iterates a sorted C<keys %{$cas->entries}>
+
+See L<DataStore::CAS>
+
+=head2 delete
+
+See L<DataStore::CAS>
+
+=cut
 
 sub get {
 	my ($self, $hash)= @_;

@@ -60,6 +60,10 @@ of the hash which then become a directory name.
 For example, "[ 2, 2 ]" would turn a hash of "1234567890" into a path of
 "12/34/567890".
 
+=head2 fanout_list
+
+Convenience accessor for C<@{ $cas->fanout }>
+
 =head2 copy_buffer_size
 
 Number of bytes to copy at a time when saving data from a filehandle to the
@@ -167,7 +171,11 @@ sub BUILD {
 	return $self;
 }
 
-=head2 create_store( \%configuration )
+=head2 create_store
+
+  $store->create_store( \%configuration )
+  - or -
+  $class->create_store( \%configuration )
 
 Create a new store at a specified path.  Configuration must include 'path',
 and may include 'digest' and 'fanout'.  'path' must be an empty writeable
@@ -571,7 +579,7 @@ sub open_file {
 	return $fh;
 }
 
-=head2 validate
+=head2 iterator
 
 Not yet implemented.
 
