@@ -6,7 +6,7 @@ use Try::Tiny;
 require Scalar::Util;
 require Symbol;
 
-our $VERSION= '1.0000';
+our $VERSION= '0.0100';
 
 =head1 NAME
 
@@ -671,6 +671,8 @@ package DataStore::CAS::FileCreatorHandle;
 use strict;
 use warnings;
 use parent -norequire => 'DataStore::CAS::VirtualHandle';
+
+our $VERSION= '0.0100';
 
 # For write-handles, commit data to the CAS and return the File object for it.
 sub commit   { $_[0]->_cas->_handle_commit(@_) }

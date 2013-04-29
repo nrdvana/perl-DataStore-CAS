@@ -3,8 +3,6 @@ use 5.008;
 use Moo;
 use Carp;
 use Try::Tiny;
-use Module::Runtime;
-use Carp::Always;
 
 our $VERSION = '0.0100';
 
@@ -169,8 +167,20 @@ sub BUILD {
 	return $self;
 }
 
-# Create a new store at a specified path.
-# Also called during constrctor when { create => 1 }
+=head2 create_store( \%configuration )
+
+Create a new store at a specified path.  Configuration must include 'path',
+and may include 'digest' and 'fanout'.  'path' must be an empty writeable
+directory, and it must exist.  'digest' currently defaults to 'SHA-1'.
+'fanout' currently defaults to '[1, 2]', resulting in paths like "a/bc/defg".
+
+This method can be called on classes or instances.
+
+You may also specify { create => 1 } in the constructor to implicitly call
+this method using the relevant parameters you supplied to the constructor.
+
+=cut
+
 sub create_store {
 	my $class= shift;
 	$class= ref $class if ref $class;
@@ -328,8 +338,16 @@ sub get {
 	}, 'DataStore::CAS::Simple::File';
 }
 
+=head2 new_write_handle( \%flags )
+
+Returns a new virtual filehandle which you can write to when adding new
+content to the CAS.  %flags is optional.  See L<DataStore::CAS> for details.
+
+=cut
+
 sub new_write_handle {
 	my ($self, $flags)= @_;
+	$flags ||= {};
 	my $data= {
 		wrote   => 0,
 		dry_run => $flags->{dry_run},
@@ -373,6 +391,14 @@ sub _handle_tell {
 	my ($self, $handle)= @_;
 	return $handle->_data->{wrote};
 }
+
+=head2 commit_write_handle( $handle )
+
+Close and save the handle (which must have come from new_write_handle).
+
+Returns the digest hash of the content that was written to the handle.
+
+=cut
 
 sub commit_write_handle {
 	my ($self, $handle)= @_;
@@ -418,6 +444,26 @@ sub _commit_file {
 	}
 	$hash;
 }
+
+=head2 put( $thing )
+
+See L<DataStore::CAS> for details.
+
+=head2 put_scalar( $data )
+
+See L<DataStore::CAS> for details.
+
+=head2 put_file( $filename | Path::Class::File | DataStore::CAS::File [, \%flags ])
+
+DataStore::CAS::Simple has special support for the flag 'hardlink'.  If your
+source is a real file, or instance of DataStore::CAS::File from another
+DataStore::CAS::Simple, '{ hardlink => 1 }' will link to the file instead of
+copying it.
+
+See L<DataStore::CAS> for details.  In particular, see the warnings about using
+the 'hardlink' and 'reuse_hash' flag.
+
+=cut
 
 sub put_file {
 	my ($self, $file, $flags)= @_;
@@ -491,7 +537,13 @@ sub _put_hardlink {
 			undef;
 		};
 }
-	
+
+=head2 validate
+
+See L<DataStore::CAS> for details.
+
+=cut
+
 sub validate {
 	my ($self, $hash)= @_;
 
@@ -504,6 +556,12 @@ sub validate {
 	return ($hash eq $hash2? 1 : 0);
 }
 
+=head2 open_file
+
+See L<DataStore::CAS> for details.
+
+=cut
+
 sub open_file {
 	my ($self, $file, $flags)= @_;
 	my $mode= '<';
@@ -513,9 +571,21 @@ sub open_file {
 	return $fh;
 }
 
+=head2 validate
+
+Not yet implemented.
+
+=cut
+
 sub iterator {
 	...
 }
+
+=head2 delete
+
+Not yet implemented.
+
+=cut
 
 sub delete {
 	...
@@ -551,6 +621,26 @@ package DataStore::CAS::Simple::File;
 use strict;
 use warnings;
 use parent 'DataStore::CAS::File';
+
+=head1 FILE OBJECTS
+
+File objects returned by DataStore::CAS::Simple have two additional attributes:
+
+=over
+
+=item local_file
+
+The filename of the disk file within DataStore::CAS::Simple's path which holds
+the requested data.
+
+=item block_size
+
+The block_size parameter from C<stat()>, which might be useful for accessing
+the file efficiently.
+
+=back
+
+=cut
 
 sub local_file { $_[0]{local_file} }
 sub block_size { $_[0]{block_size} }
