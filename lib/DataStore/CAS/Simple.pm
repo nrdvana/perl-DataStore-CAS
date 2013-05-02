@@ -25,8 +25,8 @@ copying a File object from one instance to another is optimized by hard-linking
 the underlying file.
 
   # This is particularly fast:
-  $cas1= DataStore::CAS::Simple( path => 'foo' );
-  $cas2= DataStore::CAS::Simple( path => 'bar' );
+  $cas1= DataStore::CAS::Simple->new( path => 'foo' );
+  $cas2= DataStore::CAS::Simple->new( path => 'bar' );
   $cas1->put( $cas2->get( $hash ) );
 
 This class does not perform any sort of optimization on the storage of the
