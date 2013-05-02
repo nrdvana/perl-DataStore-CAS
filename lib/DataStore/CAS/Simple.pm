@@ -8,21 +8,21 @@ use File::Spec 3.33;
 use File::Spec::Functions 'catfile', 'catdir', 'canonpath';
 use File::Temp 0.22 ();
 
-our $VERSION = '0.0100';
+our $VERSION = '0.0200';
 
 # ABSTRACT: Simple file/directory based CAS implementation
 
 =head1 DESCRIPTION
 
-This implementation of DataStore::CAS uses a directory tree where the
+This implementation of L<DataStore::CAS> uses a directory tree where the
 filenames are the hexadecimal value of the digest hashes.  The files are
 placed into directories named with a prefix of the digest hash to prevent
 too many entries in the same directory (which is actually only a concern
 on certain filesystems).
 
-Opening a DataStore::CAS::File returns a real perl filehandle, and copying
-a File object from one instance to another is optimized by hard-linking the
-underlying file.
+Opening a L<File|DataStore::CAS::File> returns a real perl filehandle, and
+copying a File object from one instance to another is optimized by hard-linking
+the underlying file.
 
   # This is particularly fast:
   $cas1= DataStore::CAS::Simple( path => 'foo' );
@@ -45,7 +45,7 @@ Read-only.  The filesystem path where the store is rooted.
 =head2 digest
 
 Read-only.  Algorithm used to calculate the hash values.  This can only be
-set in the constructor when a new store is being created.  Default is 'SHA-1'.
+set in the constructor when a new store is being created.  Default is C<SHA-1>.
 
 =head2 fanout
 
@@ -53,12 +53,12 @@ Read-only.  Returns arrayref of pattern used to split digest hashes into
 directories.  Each digit represents a number of characters from the front
 of the hash which then become a directory name.
 
-For example, "[ 2, 2 ]" would turn a hash of "1234567890" into a path of
+For example, C<[ 2, 2 ]> would turn a hash of "1234567890" into a path of
 "12/34/567890".
 
 =head2 fanout_list
 
-Convenience accessor for C<@{ $cas->fanout }>
+Convenience accessor for C<@{ $cas-E<gt>fanout }>
 
 =head2 copy_buffer_size
 
@@ -75,7 +75,7 @@ format using this information.
 
 Read-only.  A regex-ref which splits a digest hash into the parts needed
 for the path name.
-A fanout of "[ 2, 2 ]" creates a regex of "/(.{2})(.{2})(.*)/"
+A fanout of C<[ 2, 2 ]> creates a regex of C</(.{2})(.{2})(.*)/>.
 
 
 =cut
@@ -99,27 +99,31 @@ with 'DataStore::CAS';
 
 =head1 METHODS
 
-=head2 new( \%params | %params )
+=head2 new
+
+  $class->new( \%params | %params )
 
 Constructor.  It will load (and possibly create) a CAS Store.
 
-If 'create' is specified, and 'path' refers to an empty directory, a fresh
-store will be initialized.  If 'create' is specified and the directory is
-already a valid CAS, 'create' is ignored, as well as 'digest' and
-'fanout'.
+If C<create> is specified, and C<path> refers to an empty directory, a fresh
+store will be initialized.  If C<create> is specified and the directory is
+already a valid CAS, C<create> is ignored, as well as C<digest> and
+C<fanout>.
 
-'path' points to the cas directory.  Trailing slashes don't matter.
-You might want to use an absolute path in case you 'chdir' later.
+C<path> points to the cas directory.  Trailing slashes don't matter.
+You might want to use an absolute path in case you C<chdir> later.
 
-'copy_buffer_size' initializes the respective attribute.
+C<copy_buffer_size> initializes the respective attribute.
 
-The 'digest' and 'fanout' attributes can only be initialized if
+The C<digest> and C<fanout> attributes can only be initialized if
 the store is being created.
 Otherwise, it is loaded from the store's configuration.
 
-'ignore_version' allows you to load a Store even if it was created with a
-newer version of the ::CAS::Simple package that you are now using.
+C<ignore_version> allows you to load a Store even if it was created with a
+newer version of the DataStore::CAS::Simple package that you are now using.
 (or a different package entirely)
+
+=for Pod::Coverage BUILD
 
 =cut
 
@@ -169,18 +173,16 @@ sub BUILD {
 
 =head2 create_store
 
-  $store->create_store( \%configuration )
-  - or -
-  $class->create_store( \%configuration )
+  $class->create_store( %configuration | \%configuration )
 
-Create a new store at a specified path.  Configuration must include 'path',
-and may include 'digest' and 'fanout'.  'path' must be an empty writeable
-directory, and it must exist.  'digest' currently defaults to 'SHA-1'.
-'fanout' currently defaults to '[1, 2]', resulting in paths like "a/bc/defg".
+Create a new store at a specified path.  Configuration must include C<path>,
+and may include C<digest> and C<fanout>.  C<path> must be an empty writeable
+directory, and it must exist.  C<digest> currently defaults to C<SHA-1>.
+C<fanout> currently defaults to C<[1, 2]>, resulting in paths like "a/bc/defg".
 
 This method can be called on classes or instances.
 
-You may also specify { create => 1 } in the constructor to implicitly call
+You may also specify C<create =E<gt> 1> in the constructor to implicitly call
 this method using the relevant parameters you supplied to the constructor.
 
 =cut
@@ -311,7 +313,7 @@ sub _parse_digest {
 sub _parse_version {
 	my (undef, $version)= @_;
 	my %versions;
-	for my $line (split /\n/, $version) {
+	for my $line (split /\r?\n/, $version) {
 		($line =~ /^([A-Za-z0-9:_]+) ([0-9.]+)/)
 			or croak "Invalid version string: '$line'\n";
 		$versions{$1}= $2;
@@ -319,10 +321,9 @@ sub _parse_version {
 	return \%versions;
 }
 
-=head2 get( $digest_hash )
+=head2 get
 
-Returns a DataStore::CAS::File object for the given hash, if the hash
-exists in storage. Else, returns undef.
+See L<DataStore::CAS/get> for details.
 
 =cut
 
@@ -342,10 +343,9 @@ sub get {
 	}, 'DataStore::CAS::Simple::File';
 }
 
-=head2 new_write_handle( \%flags )
+=head2 new_write_handle
 
-Returns a new virtual filehandle which you can write to when adding new
-content to the CAS.  %flags is optional.  See L<DataStore::CAS> for details.
+See L<DataStore::CAS/new_write_handle> for details.
 
 =cut
 
@@ -396,11 +396,9 @@ sub _handle_tell {
 	return $handle->_data->{wrote};
 }
 
-=head2 commit_write_handle( $handle )
+=head2 commit_write_handle
 
-Close and save the handle (which must have come from new_write_handle).
-
-Returns the digest hash of the content that was written to the handle.
+See L<DataStore::CAS/commit_write_handle> for details.
 
 =cut
 
@@ -449,23 +447,23 @@ sub _commit_file {
 	$hash;
 }
 
-=head2 put( $thing )
+=head2 put
 
-See L<DataStore::CAS> for details.
+See L<DataStore::CAS/put> for details.
 
-=head2 put_scalar( $data )
+=head2 put_scalar
 
-See L<DataStore::CAS> for details.
+See L<DataStore::CAS/put_scalar> for details.
 
-=head2 put_file( $filename | Path::Class::File | DataStore::CAS::File [, \%flags ])
+=head2 put_file
+
+See L<DataStore::CAS/put_file> for details. In particular, heed the warnings
+about using the 'hardlink' and 'reuse_hash' flag.
 
 DataStore::CAS::Simple has special support for the flag 'hardlink'.  If your
-source is a real file, or instance of DataStore::CAS::File from another
-DataStore::CAS::Simple, '{ hardlink => 1 }' will link to the file instead of
-copying it.
-
-See L<DataStore::CAS> for details.  In particular, see the warnings about using
-the 'hardlink' and 'reuse_hash' flag.
+source is a real file, or instance of L<DataStore::CAS::File> from another
+DataStore::CAS::Simple, C<{ hardlink =E<gt> 1 }> will link to the file instead
+of copying it.
 
 =cut
 
@@ -544,7 +542,7 @@ sub _put_hardlink {
 
 =head2 validate
 
-See L<DataStore::CAS> for details.
+See L<DataStore::CAS/validate> for details.
 
 =cut
 
@@ -555,14 +553,14 @@ sub validate {
 	return undef unless -f $path;
 
 	open (my $fh, "<:raw", $path)
-		or return 0; # don't die.  Errors mean "not valid".
+		or return 0; # don't die.  Errors mean "not valid", even if it might be a permission issue
 	my $hash2= try { $self->_new_digest->addfile($fh)->hexdigest } catch {''};
 	return ($hash eq $hash2? 1 : 0);
 }
 
 =head2 open_file
 
-See L<DataStore::CAS> for details.
+See L<DataStore::CAS/open_file> for details.
 
 =cut
 
@@ -577,22 +575,68 @@ sub open_file {
 
 =head2 iterator
 
-Not yet implemented.
+See L<DataStore::CAS/iterator> for details.
 
 =cut
 
+sub _slurpdir {
+	my ($path, $digits)= @_;
+	opendir my $dh, $_[0] || die "opendir: $!";
+	[ sort grep { length($_) eq $digits } readdir $dh ]
+}
 sub iterator {
-	...
+	my ($self, $flags)= @_;
+	$flags ||= {};
+	my @length= ( $self->fanout_list, length($self->hash_of_null) );
+	$length[-1] -= $_ for @length[0..($#length-1)];
+	my $path= "".$self->path;
+	my @dirstack= ( _slurpdir($path, $length[0]) );
+	return sub {
+		return undef unless @dirstack;
+		while (1) {
+			# back out of a directory hierarchy that we have finished
+			while (!@{$dirstack[-1]}) {
+				pop @dirstack; # back out of directory
+				return undef unless @dirstack;
+				shift @{$dirstack[-1]}; # remove directory name
+			}
+			# Build the name of the next file or directory
+			my @parts= map { $_->[0] } @dirstack;
+			my $fname= catfile( $path, @parts );
+			# If a dir, descend into it
+			if (-d $fname) {
+				push @dirstack, _slurpdir($fname, $length[scalar @dirstack]);
+			} else {
+				shift @{$dirstack[-1]};
+				# If a file at the correct depth, return it
+				if ($#dirstack == $#length && -f $fname) {
+					return join('', @parts);
+				}
+			}
+		}
+	};
 }
 
 =head2 delete
 
-Not yet implemented.
+See L<DataStore::CAS/delete> for details.
 
 =cut
 
 sub delete {
-	...
+	my ($self, $digest_hash, $flags)= @_;
+	my $path= $self->_path_for_hash($digest_hash);
+	if (-f $path) {
+		unlink $path || die "unlink: $!"
+			unless $flags && $flags->{dry_run};
+		$flags->{stats}{delete_count}++
+			if $flags && $flags->{stats};
+		return 1;
+	} else {
+		$flags->{stats}{delete_missing}++
+			if $flags && $flags->{stats};
+		return 0;
+	}
 }
 
 # This can be called as class or instance method.
@@ -630,19 +674,15 @@ use parent 'DataStore::CAS::File';
 
 File objects returned by DataStore::CAS::Simple have two additional attributes:
 
-=over
-
-=item local_file
+=head2 local_file
 
 The filename of the disk file within DataStore::CAS::Simple's path which holds
 the requested data.
 
-=item block_size
+=head2 block_size
 
 The block_size parameter from C<stat()>, which might be useful for accessing
 the file efficiently.
-
-=back
 
 =cut
 

@@ -26,13 +26,13 @@ creates a little confusion.  The documentation of this and related modules
 try to use the phrase "digest hash" to clarify when we are referring to the
 output of a digest function vs. a perl key-value mapping.
 
-=head1 PURPOSE
-
 In short, a CAS is a key/value mapping where small-ish keys are determined
 from large-ish data but no two pieces of data will ever end up with the same
 key, thanks to astronomical probabilities.  You can then use the small-ish
 key as a reference to the large chunk of data, as a sort of compression
 technique.
+
+=head1 PURPOSE
 
 One great use for CAS is finding and merging duplicated content.  If you
 take two identical files (which you didn't know were identical) and put them
@@ -91,9 +91,11 @@ sub _build_hash_of_null {
 
 =head1 METHODS
 
-=head2 get( $digest_hash )
+=head2 get
 
-Returns a DataStore::CAS::File object for the given hash, if the hash
+  $cas->get( $digest_hash )
+
+Returns a L<DataStore::CAS::File> object for the given hash, if the hash
 exists in storage. Else, returns undef.
 
 This method is pure-virtual and must be implemented in the subclass.
@@ -102,7 +104,9 @@ This method is pure-virtual and must be implemented in the subclass.
 
 requires 'get';
 
-=head2 put( $thing, [ \%flags ])
+=head2 put
+
+  $cas->put( $thing, \%optional_flags )
 
 Convenience method.
 Inspects $thing and passes it off to a more specific method.  If you want
@@ -112,15 +116,15 @@ more control over which method is called, call it directly.
 
 =item *
 
-Scalars are passed to 'put_scalar'.
+Scalars are passed to L</put_scalar>.
 
 =item *
 
-Instances of DataStore::CAS::File or Path::Class::File are passed to 'put_file'.
+Instances of L<DataStore::CAS::File> or L<Path::Class::File> are passed to L</put_file>.
 
 =item *
 
-Globrefs or instances of IO::Handle are passed to 'put_handle'
+Globrefs or instances of L<IO::Handle> are passed to L</put_handle>.
 
 =item *
 
@@ -130,7 +134,7 @@ Dies if it encounters anything else.
 
 The return value is the digest hash of the stored data.
 
-See '->new_write_handle' for the discussion of 'flags'.
+See L</new_write_handle> for the discussion of C<flags>.
 
 Example:
 
@@ -151,16 +155,18 @@ sub put {
 	croak("Can't 'put' object of type ".ref($_[1]));
 }
 
-=head2 put_scalar( $scalar [, \%flags ])
+=head2 put_scalar
+
+  $cas->put_scalar( $scalar, \%optional_flags )
 
 Puts the literal string "$scalar" into the CAS.
 If scalar is a unicode string, it is first converted to an array of UTF-8
-bytes. Beware that when you next call 'get', reading from the filehandle
+bytes. Beware that when you next call L</get>, reading from the filehandle
 will give you bytes and not the original Unicode scalar.
 
 Returns the digest hash of the array of bytes.
 
-See '->new_write_handle' for the discussion of 'flags'.
+See L</new_write_handle> for the discussion of C<flags>.
 
 =cut
 
@@ -180,7 +186,11 @@ sub put_scalar {
 	return $self->commit_write_handle($handle);
 }
 
-=head2 put_file( $filename | Path::Class::File | DataStore::CAS::File [, \%flags ])
+=head2 put_file
+
+  $digest_hash= $cas->put_file( $filename, \%optional_flags );
+  $digest_hash= $cas->put_file( $Path_Class_File, \%optional_flags );
+  $digest_hash= $cas->put_file( $DataStore_CAS_File, \%optional_flags );
 
 Insert a file from the filesystem, or from another CAS instance.
 Default implementation simply opens the named file, and passes it to
@@ -188,7 +198,7 @@ put_handle.
 
 Returns the digest hash of the data stored.
 
-See '->new_write_handle' for the discussion of 'flags'.
+See L</new_write_handle> for the discussion of C<flags>.
 
 Additional flags:
 
@@ -200,12 +210,12 @@ If hardlink is true, and the CAS is backed by plain files, it will hardlink
 the file directly into the CAS.
 
 This reduces the integrity of your CAS; use with care.  You can use the
-C<->validate> method later to check for corruption.
+L</validate> method later to check for corruption.
 
 =item known_hashes => \%algorithm_digests
 
 If you already know the hash of your file, and don't want to re-calculate it,
-pass a hashref like C< { $algorithm_name => $digest_hash } > for this flag,
+pass a hashref like C<{ $algorithm_name =E<gt> $digest_hash }> for this flag,
 and if this CAS is using one of those algorithms, it will use the hash you
 specified instead of re-calculating it.
 
@@ -214,13 +224,13 @@ This reduces the integrity of your CAS; use with care.
 =item reuse_hash
 
 This is a shortcut for known_hashes if you specify an instance of
-DataStore::CAS::File.  It builds a known_hashes of one item using the source
+L<DataStore::CAS::File>.  It builds a known_hashes of one item using the source
 CAS's digest algorithm.
 
 =back
 
 Note: A good use of these flags is to transfer files from one instance of
-DataStore::CAS::Simple to another.
+L<DataStore::CAS::Simple> to another.
 
   my $file= $cas1->get($hash);
   $cas2->put($file, { hardlink => 1, reuse_hash => 1 });
@@ -249,19 +259,16 @@ sub put_file {
 	$self->put_handle($fh, $flags);
 }
 
-=head2 put_handle( \*HANDLE | IO::Handle, [ \%flags ])
+=head2 put_handle
 
-Pure virtual method.  Must be implemented by all subclasses.
+  $digest_hash= $cas->put_handle( \*HANDLE | IO::Handle, \%optional_flags );
 
 Reads from $io_handle and stores into the CAS.  Calculates the digest hash
 of the data as it goes.  Dies on any I/O errors.
 
 Returns the calculated hash when complete.
 
-If the string already exists in the CAS, most back-ends will be smart enough
-to not store anything, and just return the hash.
-
-See '->put' for the discussion of 'flags'.
+See L</new_write_handle> for the discussion of C<flags>.
 
 =cut
 
@@ -285,7 +292,9 @@ sub put_handle {
 	return $self->commit_write_handle($h_out);
 }
 
-=head2 new_write_handle( %flags )
+=head2 new_write_handle
+
+  $handle= $cas->new_write_handle( %flags )
 
 Get a new handle for writing to the Store.  The data written to this handle
 will be saved to a temporary file as the digest hash is calculated.
@@ -318,7 +327,11 @@ operations when you are done.
 
 =back
 
-=head2 commit_write_handle( $handle )
+=head2 commit_write_handle
+
+  my $handle= $cas->new_write_handle();
+  print $handle $data;
+  $cas->commit_write_handle($handle);
 
 This closes the given write-handle, and then finishes calculating its digest
 hash, and then stores it into the CAS (unless the handle was created with the
@@ -335,13 +348,15 @@ sub new_write_handle {
 # This must be implemented by subclasses
 requires 'commit_write_handle';
 
-=head2 validate( $digest_hash [, %flags ])
+=head2 validate
+
+  $bool_valid= $cas->validate( $digest_hash, \%optional_flags )
 
 Validate an entry of the CAS.  This is used to detect whether the storage
 has become corrupt.  Returns 1 if the hash checks out ok, and returns 0 if
 it fails, and returns undef if the hash doesn't exist.
 
-Like the 'put' method, you can pass a hashref in $flags{stats} which
+Like the L</put> method, you can pass a hashref in $flags{stats} which
 will receive information about the file.  This can be used to implement
 mark/sweep algorithms for cleaning out the CAS by asking the CAS for all
 other digest_hashes referenced by $digest_hash.
@@ -372,7 +387,9 @@ sub validate {
 	return (defined $new_hash and $new_hash eq $hash)? 1 : 0;
 }
 
-=head2 delete( $digest_hash [, %flags ])
+=head2 delete
+
+  $bool_happened= $cas->delete( $digest_hash, %optional_flags )
 
 DO NOT USE THIS METHOD UNLESS YOU UNDERSTAND THE CONSEQUENCES
 
@@ -386,7 +403,7 @@ The safest way to clean up a CAS is to create a second CAS and migrate the
 items you want to keep from the first to the second; then delete the
 original CAS.  See the documentation on the storage engine you are using
 to see if it supports an efficient way to do this.  For instance,
-DataStore::CAS::Simple can use hard-links on supporting filesystems,
+L<DataStore::CAS::Simple> can use hard-links on supporting filesystems,
 resulting in a very efficient copy operation.
 
 If no efficient mechanisms are available, then you might need to write a
@@ -429,38 +446,50 @@ The number of entries that didn't exist.
 
 requires 'delete';
 
-=head2 iterator([ \%flags ])
+=head2 iterator
+
+  $iter= $cas->iterator( \%optional_flags )
+  while (defined ($digest_hash= $iter->())) { ... }
 
 Iterate the contents of the CAS.  Returns a perl-style coderef iterator which
 returns the next digest_hash string each time you call it.  Returns undef at
 end of the list.
 
-Flags:
+C<%flags> :
 
-The only flag defined so far is 'prefix'.  You can use this to imitate Git's
-feature of identifying an object by a portion of its hash instead of having
-to type the whole thing.  You will probably need more digits though, because
-you're searching the whole CAS, and not just commit entries.
+=over
+
+=item prefix
+
+Specify a prefix for all the returned digest hashes.  This acts as a filter.
+You can use this to imitate Git's feature of identifying an object by a portion
+of its hash instead of having to type the whole thing.  You will probably need
+more digits though, because you're searching the whole CAS, and not just commit
+entries.
+
+=back
 
 =cut
 
 requires 'iterator';
 
-=head2 open_file( $file [, \%flags ])
+=head2 open_file
 
-Open the File object (returned by 'get') and return a readable and seekable
+  $handle= $cas->open_file( $fileObject, \%optional_flags )
+
+Open the File object (returned by L</get>) and return a readable and seekable
 filehandle to it.  The filehandle might be a perl filehandle, or might be a
 tied object implementing the filehandle operations.
 
 Flags:
 
-=over 10
+=over
 
-=item layer (NOT IMPLEMENTED YET!)
+=item layer (TODO)
 
-Specify a perl I/O layer, like 'raw' or 'utf8'.  This is equivalent to calling
-'binmode' with that argument on the filehandle.  Note that returned handles
-are 'raw' by default.
+When implemented, this will allow you to specify a Parl I/O layer, like 'raw'
+or 'utf8'.  This is equivalent to calling 'binmode' with that argument on the
+filehandle.  Note that returned handles are 'raw' by default.
 
 =back
 
@@ -477,41 +506,6 @@ sub _handle_destroy {}
 package DataStore::CAS::File;
 use strict;
 use warnings;
-
-=head1 FILE OBJECTS
-
-The 'get' method returns objects of type DataStore::CAS::File. (or a subclass)
-
-These are bare minimal wrappers that essentially just curry a few parameters
-to later calls to 'open' (or possibly 'put').
-
-The file objects returned by a store implementation may vary, but they will
-always have the following API available:
-
-=over 8
-
-=item store
-
-Read-only attribute; Reference to the store which created this file.
-
-=item hash
-
-Read-only attribute; The digest hash of the bytes of this file.
-
-=item size
-
-Read-only attribute; The length of the file, in bytes.
-
-=item open([ $layer_name | %flags | \%flags ])
-
-A convenience method to call '$file->store->open_file($file, \%flags)'
-
-=back
-
-Other attributes or methods may exist for the storage engine you are using;
-see the documentation for your particular store.
-
-=cut
 
 our $VERSION= '0.0100';
 

@@ -47,7 +47,7 @@ my $casdir= dir('cas_tmp','cas_store_simple');
 my $casdir2= dir('cas_tmp','cas_store_simple2');
 my $casdir3= dir('cas_tmp','cas_store_simple3');
 
-sub test_constructor {
+subtest test_constructor => sub {
 	$casdir->rmtree(0, 0);
 	mkdir($casdir) or die "$!";
 
@@ -55,8 +55,8 @@ sub test_constructor {
 
 	my $nullfile= $casdir->file('da','39a3ee5e6b4b0d3255bfef95601890afd80709');
 	is( slurp($nullfile), '', 'null hash exists and is empty' );
-	is( slurp($casdir->file('conf','fanout')), "2\n", 'fanout file correctly written' );
-	is( slurp($casdir->file('conf','digest')), "SHA-1\n", 'digest file correctly written' );
+	like( slurp($casdir->file('conf','fanout')), qr/^2\r?\n$/, 'fanout file correctly written' );
+	like( slurp($casdir->file('conf','digest')), qr/^SHA-1\r?\n$/, 'digest file correctly written' );
 
 	unlink $nullfile or die "$!";
 	dies_like { DataStore::CAS::Simple->new(path => $casdir) } qr/missing a required/, 'missing null file';
@@ -81,9 +81,9 @@ sub test_constructor {
 	$cas= undef;
 	$cas= new_ok('DataStore::CAS::Simple', [ path => $casdir ], 're-open');
 	done_testing;
-}
+};
 
-sub test_get_put {
+subtest test_get_put => sub {
 	$casdir->rmtree(0, 0);
 	mkdir($casdir) or die "$!";
 
@@ -118,9 +118,9 @@ sub test_get_put {
 	is( $cas->put($cas->get($hash)), $hash, 'put DataStore::CAS::File' );
 	
 	done_testing;
-}
+};
 
-sub test_hardlink_optimization {
+subtest test_hardlink_optimization => sub {
 	$casdir->rmtree(0, 0);
 	$casdir2->rmtree(0, 0);
 	$casdir3->rmtree(0, 0);
@@ -157,10 +157,40 @@ sub test_hardlink_optimization {
 	is( $cas1->put($file3, { reuse_hash => 1, hardlink => 1 }), $hash1, 'correct sha-1 hash from sha-2 file' );
 
 	done_testing;
-}
+};
 
-subtest test_constructor => \&test_constructor;
-subtest test_get_put     => \&test_get_put;
-subtest test_hardlink_optimization => \&test_hardlink_optimization;
+subtest test_iterator => sub {
+	$casdir->rmtree(0, 0);
+	mkdir($casdir) or die "$!";
+	
+	my $cas1= new_ok('DataStore::CAS::Simple', [ path => $casdir,  create => 1, digest => 'SHA-1' ]);
+	isa_ok( my $i= $cas1->iterator, 'CODE' );
+	is( $i->(), $cas1->hash_of_null, 'one element' );
+	is( $i->(), undef, 'end of list' );
+
+	my $hashes= {
+		'String of Text' => '00de5a1e6cc9c22ce07401b63f7b422c999d66e6',
+		'Testing'        => '0820b32b206b7352858e8903a838ed14319acdfd',
+		'Something'      => 'b74dd130fe4e46c52aeb39878480cfe50324dab9',
+		'Something1'     => 'ee6c06282ef9600df99eee106fb770b8c3dd1ff1',
+		'Something2'     => 'ca2a1a4e26b79949243d23e526936bccca0493ce',
+	};
+	is( $cas1->put($_), $hashes->{$_} )
+		for keys %$hashes;
+	my @expected= sort (values %$hashes, $cas1->hash_of_null);
+	$i= $cas1->iterator;
+	my @actual;
+	while (defined (my $x= $i->())) { push @actual, $x; }
+	is_deeply( \@actual, \@expected, 'iterated correctly' );
+	
+	ok( $cas1->delete(delete $hashes->{'Testing'}), 'deleted item' );
+	@expected= sort (values %$hashes, $cas1->hash_of_null);
+	$i= $cas1->iterator;
+	@actual= ();
+	while (defined (my $x= $i->())) { push @actual, $x; }
+	is_deeply( \@actual, \@expected, 'iterated correctly' );
+	
+	done_testing;
+};
 
 done_testing;
