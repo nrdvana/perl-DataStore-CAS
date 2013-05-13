@@ -8,7 +8,7 @@ use File::Spec 3.33;
 use File::Spec::Functions 'catfile', 'catdir', 'canonpath';
 use File::Temp 0.22 ();
 
-our $VERSION = '0.0200';
+our $VERSION = '0.020001';
 
 # ABSTRACT: Simple file/directory based CAS implementation
 

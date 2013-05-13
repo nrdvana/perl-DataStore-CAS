@@ -6,7 +6,7 @@ use Try::Tiny;
 require Scalar::Util;
 require Symbol;
 
-our $VERSION= '0.0100';
+our $VERSION= '0.020001';
 
 # ABSTRACT: Abstract base class for Content Addressable Storage
 
@@ -327,6 +327,8 @@ operations when you are done.
 
 =back
 
+Write handles will probably be an instance of L<FileCreatorHandle|DataStore::CAS::FS::FileCreatorHandle>.
+
 =head2 commit_write_handle
 
   my $handle= $cas->new_write_handle();
@@ -507,7 +509,7 @@ package DataStore::CAS::File;
 use strict;
 use warnings;
 
-our $VERSION= '0.0100';
+our $VERSION= '0.020001';
 
 sub store { $_[0]{store} }
 sub hash  { $_[0]{hash} }
@@ -543,25 +545,7 @@ package DataStore::CAS::VirtualHandle;
 use strict;
 use warnings;
 
-our $VERSION= '0.0100';
-
-=head1 HANDLE OBJECTS
-
-The handles returned by open_file and new_write_handle are compatible with
-both the old GLOBREF style functions and the new IO::Handle API.  In other
-words, you can use either
-
-  $handle->read($buffer, 100)
-  or
-  read($handle, $buffer, 100)
-
-So they are nicely compatible with other libraries you might use.  It is
-unlikely that they are actually real handles though, so you probably can't
-sysread/syswrite on them.  You can find out by checking "fileno($handle)".
-One notable exception is DataStore::CAS::Simple->open_file, which always
-returns a direct filehandle to the underlying file.
-
-=cut
+our $VERSION= '0.020001';
 
 sub new {
 	my ($class, $cas, $fields)= @_;
@@ -594,7 +578,7 @@ sub AUTOLOAD {
 #
 
 sub READ     { (shift)->read(@_) }
-sub READLINE { wantarray? (shift)->readlines : (shift)->readline }
+sub READLINE { wantarray? (shift)->getlines : (shift)->getline }
 sub GETC     { $_[0]->getc }
 sub EOF      { $_[0]->eof }
 
@@ -612,12 +596,12 @@ sub CLOSE    { $_[0]->close }
 # The following are some default implementations to make subclassing less cumbersome.
 #
 
-sub readlines {
+sub getlines {
 	my $self= shift;
-	wantarray or !defined wantarray or Carp::croak "readlines called in scalar context";
+	wantarray or !defined wantarray or Carp::croak "getlines called in scalar context";
 	my (@ret, $line);
 	push @ret, $line
-		while defined ($line= $self->readline);
+		while defined ($line= $self->getline);
 	@ret;
 }
 
@@ -664,10 +648,10 @@ use strict;
 use warnings;
 use parent -norequire => 'DataStore::CAS::VirtualHandle';
 
-our $VERSION= '0.0100';
+our $VERSION= '0.020001';
 
 # For write-handles, commit data to the CAS and return the digest hash for it.
-sub commit   { $_[0]->_cas->_handle_commit(@_) }
+sub commit   { $_[0]->_cas->commit_write_handle(@_) }
 
 # These would happen anyway via the AUTOLOAD, but we enumerate them so that
 # they officially appear as methods of this class.
