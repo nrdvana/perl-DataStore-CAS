@@ -150,8 +150,10 @@ Example:
 
 sub put {
 	goto $_[0]->can('put_scalar') unless ref $_[1];
-	goto $_[0]->can('put_file')   if ref($_[1])->isa('DataStore::CAS::File') or ref($_[1])->isa('Path::Class::File');
-	goto $_[0]->can('put_handle') if ref($_[1])->isa('IO::Handle') or (Scalar::Util::reftype($_[1]) eq 'GLOB');
+	goto $_[0]->can('put_file')
+		if ref($_[1])->isa('DataStore::CAS::File') or ref($_[1])->isa('Path::Class::File');
+	goto $_[0]->can('put_handle')
+		if ref($_[1])->isa('IO::Handle') or (Scalar::Util::reftype($_[1]) eq 'GLOB');
 	croak("Can't 'put' object of type ".ref($_[1]));
 }
 
@@ -160,9 +162,8 @@ sub put {
   $cas->put_scalar( $scalar, \%optional_flags )
 
 Puts the literal string "$scalar" into the CAS.
-If scalar is a unicode string, it is first converted to an array of UTF-8
-bytes. Beware that when you next call L</get>, reading from the filehandle
-will give you bytes and not the original Unicode scalar.
+The scalar must be a string of bytes; you get an exception if any character
+has a codepoint above 255.
 
 Returns the digest hash of the array of bytes.
 
@@ -176,11 +177,11 @@ sub put_scalar {
 	# Force to plain string
 	$scalar= "$scalar" if ref $scalar;
 
-	# Convert to octets.  Actually, opening a stream to a unicode scalar gives the
-	#  same result, but best to be explicit about what we want and not rely on
-	#  undocumented behavior.
-	utf8::encode($scalar) if utf8::is_utf8($scalar);
-	
+	# Can only 'put' octets, not wide-character unicode strings.
+	utf8::downgrade($scalar, 1)
+		or croak "scalar must be byte string (octets).  If storing unicode,"
+			." you must reduce to a byte encoding first.";
+
 	my $handle= $self->new_write_handle($flags);
 	$handle->_write_all($scalar);
 	return $self->commit_write_handle($handle);
