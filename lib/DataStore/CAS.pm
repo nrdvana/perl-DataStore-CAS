@@ -7,6 +7,7 @@ require Scalar::Util;
 require Symbol;
 
 our $VERSION= '0.020001';
+our @CARP_NOT= qw( DataStore::CAS::File DataStore::CAS::VirtualHandle );
 
 # ABSTRACT: Abstract base class for Content Addressable Storage
 

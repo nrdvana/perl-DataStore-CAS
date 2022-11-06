@@ -9,6 +9,7 @@ use File::Spec::Functions 'catfile', 'catdir', 'canonpath';
 use File::Temp 0.22 ();
 
 our $VERSION = '0.020001';
+our @CARP_NOT= qw( DataStore::CAS DataStore::CAS::File DataStore::CAS::VirtualHandle );
 
 # ABSTRACT: Simple file/directory based CAS implementation
 
@@ -233,10 +234,7 @@ sub create_store {
 		unless $class->_is_dir_empty($params{path});
 
 	$params{digest} ||= 'SHA-1';
-	# Make sure the algorithm is available
-	my $found= ( try { defined $class->_new_digest($params{digest}); } catch { print "#$_\n"; 0; } )
-		or croak "Digest algorithm '".$params{digest}."'"
-		        ." is not available on this system.\n";
+	$class->_assert_digest_available($params{digest});
 
 	$params{fanout} ||= [ 1, 2 ];
 	# make sure the fanout isn't insane
@@ -275,15 +273,9 @@ sub _load_config {
 	# Get the digest algorithm name
 	$params{digest}=
 		$class->_parse_digest($class->_read_config_setting($path, 'digest'));
-	# Check for digest algorithm availability
-	my $found= ( try { $class->_new_digest($params{digest}); 1; } catch { 0; } )
-		or croak "Digest algorithm '".$params{digest}."'"
-		        ." is not available on this system.\n";
-
+	$class->_assert_digest_available($params{digest});
 	# Get the directory fan-out specification
-	$params{fanout}=
-		$class->_parse_fanout($class->_read_config_setting($path, 'fanout'));
-
+	$params{fanout}= $class->_parse_fanout($class->_read_config_setting($path, 'fanout'));
 	return \%params;
 }
 
@@ -447,10 +439,12 @@ See L<DataStore::CAS/new_write_handle> for details.
 sub new_write_handle {
 	my ($self, $flags)= @_;
 	$flags ||= {};
+	my $known_hash= $flags->{known_hashes} && $flags->{known_hashes}{$self->digest};
+	$known_hash= undef unless defined $known_hash && length $known_hash;
 	my $data= {
 		wrote   => 0,
 		dry_run => $flags->{dry_run},
-		hash    => $flags->{known_digests}{$self->digest},
+		hash    => $known_hash,
 		stats   => $flags->{stats},
 	};
 	
@@ -458,7 +452,7 @@ sub new_write_handle {
 		unless $data->{dry_run};
 	
 	$data->{digest}= $self->_new_digest
-		unless defined $data->{known_hash};
+		unless defined $data->{hash};
 	
 	return DataStore::CAS::FileCreatorHandle->new($self, $data);
 }
@@ -740,6 +734,18 @@ sub delete {
 sub _new_digest {
 	my ($self, $digest_name)= @_;
 	Digest->new($digest_name || $self->digest);
+}
+
+sub _assert_digest_available {
+	my ($class, $digest)= @_;
+	try {
+		$class->_new_digest($digest)
+	}
+	catch {
+		s/^/# /mg;
+		croak "Digest algorithm '$digest' is not available on this system.\n$_\n"
+	};
+	1;
 }
 
 package DataStore::CAS::Simple::File;

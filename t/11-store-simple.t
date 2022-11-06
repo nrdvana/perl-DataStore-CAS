@@ -1,4 +1,8 @@
 #! /usr/bin/env perl -T
+
+for (qw( DataStore::CAS DataStore::CAS::Simple DataStore::CAS::File Test::Builder Test::More )) {
+	push @{$_.'::CARP_NOT'}, qw( DataStore::CAS DataStore::CAS::Simple DataStore::CAS::File Test::Builder Test::More );
+}
 use strict;
 use warnings;
 use Test::More;
@@ -121,6 +125,10 @@ subtest test_get_put => sub {
 };
 
 subtest test_hardlink_optimization => sub {
+	file('cas_tmp', 'linktest.1')->touch;
+	plan skip_all => 'hardlinks don\'t preserve inode number on this filesystem'
+		unless try { link(file('cas_tmp', 'linktest.1'), file('cas_tmp', 'linktest.2')) }
+		&& file('cas_tmp', 'linktest.1')->stat->ino == file('cas_tmp', 'linktest.2')->stat->ino;
 	$casdir->rmtree(0, 0);
 	$casdir2->rmtree(0, 0);
 	$casdir3->rmtree(0, 0);
