@@ -10,7 +10,7 @@ use File::stat;
 sub slurp {
 	my $f= shift;
 	if (ref $f ne 'GLOB') {
-		open(my $handle, '<:raw', $f) or do { diag "open($_[0]): $!"; return undef; };
+		open(my $handle, '<:raw', $f) or do { diag "open($f): $!"; return undef; };
 		$f= $handle;
 	}
 	local $/= undef;
@@ -75,7 +75,7 @@ subtest test_constructor => sub {
 
 	$casdir->rmtree(0, 0);
 	mkdir($casdir) or die "$!";
-	dies_like { DataStore::CAS::Simple->new(path => $casdir, create => 1, fanout => [1,1,1,1,1,1]) } qr/fanout/, 'fanout too wide';
+	dies_like { DataStore::CAS::Simple->new(path => $casdir, create => 1, fanout => [1,1,1,1,1,1,1]) } qr/fanout/, 'fanout too wide';
 
 	$cas= new_ok('DataStore::CAS::Simple', [ path => $casdir, create => 1, digest => 'SHA-1', fanout => [1,1,1,1,1] ], 'create with deep fanout');
 	$cas= undef;
@@ -92,7 +92,7 @@ subtest test_get_put => sub {
 	isa_ok( (my $file= $cas->get( 'da39a3ee5e6b4b0d3255bfef95601890afd80709' )), 'DataStore::CAS::File', 'get null file' );
 	is( $file->size, 0, 'size of null is 0' );
 
-	is( $cas->get( '0000000000000000000' ), undef, 'non-existent hash' );
+	is( $cas->get( '0'x40 ), undef, 'non-existent hash' );
 
 	is( $cas->put(''), 'da39a3ee5e6b4b0d3255bfef95601890afd80709', 'put empty file again' );
 
@@ -138,11 +138,11 @@ subtest test_hardlink_optimization => sub {
 
 	is( $cas1->put($str, { reuse_hash => 1, hardlink => 1 }), $hash1, 'correct sha-1 hash' );
 	my $file= $cas1->get($hash1) or die;
-	is( $file->local_file, $cas1->_path_for_hash($hash1), 'path is what we expected' );
+	is( $file->local_file, $cas1->path_for_hash($hash1), 'path is what we expected' );
 
 	is( $cas2->put($file, { reuse_hash => 1, hardlink => 1 }), $hash1, 'correct sha-1 when migrated' );
 	my $file2= $cas2->get($hash1) or die;
-	is( $file2->local_file, $cas2->_path_for_hash($hash1) );
+	is( $file2->local_file, $cas2->path_for_hash($hash1) );
 
 	my $stat1= stat( $file->local_file ) or die "stat: $!";
 	my $stat2= stat( $file2->local_file ) or die "stat: $!";

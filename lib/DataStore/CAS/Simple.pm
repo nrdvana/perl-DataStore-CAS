@@ -51,14 +51,18 @@ set in the constructor when a new store is being created.  Default is C<SHA-1>.
 
 Read-only.  Returns arrayref of pattern used to split digest hashes into
 directories.  Each digit represents a number of characters from the front
-of the hash which then become a directory name.
+of the hash which then become a directory name.  The final digit may be
+the character '=' to indicate the filename is the full hash, or '*' to
+indicate the filename is the remaining digits of the hash.  '*' is the
+default behavior if the C<fanout> does not include one of these characters.
 
 For example, C<[ 2, 2 ]> would turn a hash of "1234567890" into a path of
-"12/34/567890".
+"12/34/567890".  C<[ 2, 2, '=' ]> would turn a hash of "1234567890" into
+a path of "12/34/1234567890".
 
 =head2 fanout_list
 
-Convenience accessor for C<@{ $cas-E<gt>fanout }>
+Convenience accessor for C<< @{ $cas->fanout } >>
 
 =head2 copy_buffer_size
 
@@ -71,13 +75,6 @@ Hashref of version information about the modules that created the store.
 Newer library versions can determine whether the storage is using an old
 format using this information.
 
-=head2 _fanout_regex
-
-Read-only.  A regex-ref which splits a digest hash into the parts needed
-for the path name.
-A fanout of C<[ 2, 2 ]> creates a regex of C</(.{2})(.{2})(.*)/>.
-
-
 =cut
 
 has path             => ( is => 'ro', required => 1 );
@@ -86,14 +83,8 @@ has _config          => ( is => 'rwp', init_arg => undef );
 sub fanout              { [ $_[0]->fanout_list ] }
 sub fanout_list         { @{ $_[0]->_config->{fanout} } }
 sub digest              { $_[0]->_config->{digest} }
-
-has _fanout_regex    => ( is => 'lazy' );
-
-sub _build__fanout_regex {
-	my $self= shift;
-	my $regex= join('', map { "(.{$_})" } $self->fanout_list ).'(.*)';
-	qr/$regex/;
-}
+has _digest_hash_to_hex => ( is => 'rw', init_arg => undef );
+has _digest_hash_split  => ( is => 'rw', init_arg => undef );
 
 with 'DataStore::CAS';
 
@@ -158,6 +149,9 @@ sub BUILD {
 	}
 
 	$self->_set__config( $self->_load_config($path, { ignore_version => $ignore_version }) );
+	my ($tohex, $split)= _get_hex_and_fanout_functions($self->digest, $self->fanout);
+	$self->_digest_hash_to_hex($tohex);
+	$self->_digest_hash_split($split);
 
 	if ($setup) {
 		$self->put('');
@@ -169,6 +163,46 @@ sub BUILD {
 	}
 
 	return $self;
+}
+
+=head2 path_parts_for_hash
+
+  my (@path)= $cas->path_parts_for_hash($digest_hash);
+
+Given a hash string, return the directory parts and filename where that content
+would be found.  They are returned as a list.  If the hash is not valid for this
+digest algorithm, this will throw an exception.
+
+=head2 path_for_hash
+
+  my $path= $cas->path_for_hash($digest_hash);
+  my $path= $cas->path_for_hash($digest_hash, $create_dirs);
+
+Given a hash string, return the path to the file, including C<< $self->path >>.
+The second argument can be set to true to create any missing directories in
+this path.
+
+=cut
+
+sub path_parts_for_hash {
+	my ($self, $hash)= @_;
+	$self->_digest_hash_split->($hash);
+}
+
+sub path_for_hash {
+	my ($self, $hash, $create_dirs)= @_;
+	my @parts= $self->_digest_hash_split->($hash);
+	if ($create_dirs) {
+		my $path= $self->path;
+		for (@parts[0..($#parts-1)]) {
+			$path= catdir($path, $_);
+			next if -d $path;
+			mkdir($path) or croak "mkdir($path): $!";
+		}
+		return catfile($path, $parts[-1]);
+	} else {
+		return catfile($self->path, @parts);
+	}
 }
 
 =head2 create_store
@@ -253,6 +287,57 @@ sub _load_config {
 	return \%params;
 }
 
+sub _get_hex_and_fanout_functions {
+	my ($digest, $fanout)= @_;
+	my $hexlen= length Digest->new($digest)->add('')->hexdigest;
+	my $rawlen= length Digest->new($digest)->add('')->digest;
+	# Create a function that coerces the argument into a hex string, or dies.
+	# When given a digest, it can be raw bytes, or hex.  The  hex one is double the length.
+	my $tohex= sub {
+		my $hash= $_[2];
+		length $hash == $hexlen? $hash
+		: length $hash == $rawlen? _to_hex($hash)
+		: croak "Invalid length for checksum of $digest: "
+			.length($hash) . ' "'._printable($hash).'"';
+	};
+
+	# Create a function that splits a digest into the path components
+	# for the CAS file.
+	$fanout= [ @$fanout ];
+	# final component might be a character indicating full-name or remainder-name
+	my $filename_type= $fanout->[-1] =~ /^[0-9]+$/? '*'
+		: pop @$fanout;
+	my $re= '^'.join('', map "([0-9a-f]{$_})", map /([0-9]+)/, @$fanout);
+	$re .= '([0-9a-f]+)' if $filename_type eq '*';
+	$re = qr/$re/;
+	my $split= ($filename_type eq '=')? sub {
+			my $hash= $_[0];
+			$hash= $tohex->($hash) if length $hash != $hexlen;
+			my @dirs= ($hash =~ $re) or croak "can't split hash '$hash' into requested fanout";
+			return @dirs, $hash;
+		}
+		: ($filename_type eq '*')? sub {
+			my $hash= $_[0];
+			$hash= $tohex->($hash) if length $hash != $hexlen;
+			my @dirs= ($hash =~ $re) or croak "can't split hash '$hash' into requested fanout";
+			return @dirs;
+		}
+		: croak "Unrecognized filename indicator in fanout specification: '$filename_type'";
+
+	return ($tohex, $split);
+}
+
+sub _to_hex {
+	my $tmp= shift;
+	$tmp =~ s/./ sprintf("%02X", $_) /ge;
+	$tmp;
+}
+sub _printable {
+	my $tmp= shift;
+	$tmp =~ s/[\0-\x1F\x7F]/ sprintf("\\x%02X", $_) /ge;
+	$tmp;
+}
+
 sub _is_dir_empty {
 	my (undef, $path)= @_;
 	opendir(my $dh, $path)
@@ -286,19 +371,29 @@ sub _read_config_setting {
 	return $str;
 }
 
+# 4 hex digits makes 65536 subdirectories in a single parent
+our $max_sane_level_fanout= 4;
+# 6 hex digits creates 16 million directories, more than that is probably a mistake
+our $max_sane_total_fanout= 6;
 sub _parse_fanout {
 	my (undef, $fanout)= @_;
 	chomp($fanout);
-	my @fanout;
+	my @fanout= split /\s+/, $fanout;
 	# Sanity check on the fanout
 	my $total_digits= 0;
-	for (split /\s+/, $fanout) {
-		($_ =~ /^(\d+)$/) or croak "Invalid fanout spec";
-		push @fanout, $1;
-		$total_digits+= $1;
-		croak "Too large fanout in one directory ($1)" if $1 > 3;
+	for (@fanout) {
+		if ($_ =~ /^(\d+)$/) {
+			$total_digits+= $1;
+			croak "Too large fanout in one directory ($1)" if $1 > $max_sane_level_fanout;
+		} elsif ($_ eq '=' or $_ eq '*') {
+			# indicates full hash for filename, or partial hash
+			# must be the final element
+			\$_ == \$fanout[-1] or croak "Fanout '+' or '=' can only be final element";
+		} else {
+			croak "Invalid character in fanout specification: '$_'";
+		}
 	}
-	croak "Too many digits of fanout! ($total_digits)" if $total_digits > 5;
+	croak "Too many digits of fanout! ($total_digits)" if $total_digits > $max_sane_total_fanout;
 	return \@fanout;
 }
 
@@ -329,7 +424,7 @@ See L<DataStore::CAS/get> for details.
 
 sub get {
 	my ($self, $hash)= @_;
-	my $fname= catfile($self->_path_for_hash($hash));
+	my $fname= $self->path_for_hash($hash);
 	return undef
 		unless (my ($size, $blksize)= (stat $fname)[7,11]);
 	return bless {
@@ -423,7 +518,7 @@ sub commit_write_handle {
 sub _commit_file {
 	my ($self, $source_file, $hash, $flags)= @_;
 	# Find the destination file name
-	my $dest_name= $self->_path_for_hash($hash);
+	my $dest_name= $self->path_for_hash($hash);
 	# Only if we don't have it yet...
 	if (-f $dest_name) {
 		if ($flags->{stats}) {
@@ -436,7 +531,7 @@ sub _commit_file {
 		#   in the spirit of keeping the common case fast.
 		$flags->{dry_run}
 			or link($source_file, $dest_name)
-			or ($self->_add_missing_path($hash) and link($source_file, $dest_name))
+			or ($self->path_for_hash($hash, 1) and link($source_file, $dest_name))
 			or croak "rename($source_file => $dest_name): $!";
 		# record that we added a new hash, if stats enabled.
 		if ($flags->{stats}) {
@@ -549,7 +644,7 @@ See L<DataStore::CAS/validate> for details.
 sub validate {
 	my ($self, $hash)= @_;
 
-	my $path= $self->_path_for_hash($hash);
+	my $path= $self->path_for_hash($hash);
 	return undef unless -f $path;
 
 	open (my $fh, "<:raw", $path)
@@ -625,7 +720,7 @@ See L<DataStore::CAS/delete> for details.
 
 sub delete {
 	my ($self, $digest_hash, $flags)= @_;
-	my $path= $self->_path_for_hash($digest_hash);
+	my $path= $self->path_for_hash($digest_hash);
 	if (-f $path) {
 		unlink $path || die "unlink: $!"
 			unless $flags && $flags->{dry_run};
@@ -640,29 +735,11 @@ sub delete {
 }
 
 # This can be called as class or instance method.
-# When called as an instance method, '$digest_name' is mandatory,
+# When called as a class method, '$digest_name' is mandatory,
 #   otherwise it is unneeded.
 sub _new_digest {
 	my ($self, $digest_name)= @_;
 	Digest->new($digest_name || $self->digest);
-}
-
-sub _path_for_hash {
-	my ($self, $hash)= @_;
-	return catfile($self->path, ($hash =~ $self->_fanout_regex));
-}
-
-sub _add_missing_path {
-	my ($self, $hash)= @_;
-	my $str= $self->path;
-	my @parts= ($hash =~ $self->_fanout_regex);
-	pop @parts; # discard filename
-	for (@parts) {
-		$str= catdir($str, $_);
-		next if -d $str;
-		mkdir($str) or croak "mkdir($str): $!";
-	}
-	1;
 }
 
 package DataStore::CAS::Simple::File;

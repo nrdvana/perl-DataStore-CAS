@@ -1,4 +1,9 @@
 0.03 - 2022-11-05
-  - put_scalar no longer uses utf-8 flag as in indicator of unicode,
-    and dies if given a character > 255.
-
+  - Do not inspect is_utf8 flag during put_scalar, require caller to provide
+    bytes, and die if given a character > 255.
+  - New option '=' as last element of fanout writes a filename of the full
+    hex hash instead of the remainder of the hash that wasn't in the directory.
+  - Remove attribute _fanout_regex which never should have been documented
+    as if it were public.
+  - New methods path_parts_for_hash and path_for_hash
+  - Raise the limits on max directory fanout
