@@ -5,7 +5,7 @@ use Carp;
 use Try::Tiny;
 use Digest 1.16;
 
-our $VERSION= '0.020001';
+our $VERSION= '0.03';
 
 # ABSTRACT: In-memory CAS for debugging and testing
 

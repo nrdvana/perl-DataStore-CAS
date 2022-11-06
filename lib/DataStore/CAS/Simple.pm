@@ -8,7 +8,7 @@ use File::Spec 3.33;
 use File::Spec::Functions 'catfile', 'catdir', 'canonpath';
 use File::Temp 0.22 ();
 
-our $VERSION = '0.020001';
+our $VERSION = '0.03';
 our @CARP_NOT= qw( DataStore::CAS DataStore::CAS::File DataStore::CAS::VirtualHandle );
 
 # ABSTRACT: Simple file/directory based CAS implementation

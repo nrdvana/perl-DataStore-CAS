@@ -1,9 +1,18 @@
-0.03 - 2022-11-05
-  - Do not inspect is_utf8 flag during put_scalar, require caller to provide
-    bytes, and die if given a character > 255.
-  - New option '=' as last element of fanout writes a filename of the full
-    hex hash instead of the remainder of the hash that wasn't in the directory.
-  - Remove attribute _fanout_regex which never should have been documented
-    as if it were public.
-  - New methods path_parts_for_hash and path_for_hash
-  - Raise the limits on max directory fanout
+0.03 - 2022-11-06
+  - DataStore::CAS:
+     - New API methods ->calculate_hash and ->calculate_file_hash
+     - During all ->put methods, calculate the hash first before writing a stream,
+       (if the source is a scalar or a file) to avoid unnecessary writes.
+     - Allow scalar-refs to be passed to ->put_scalar to avoid copying large scalars.
+     - Do not inspect is_utf8 flag during ->put_scalar.  Require caller to provide
+       bytes, and die if given a character > 255.
+     - New ->put_file option { move => 1 }, renames the source file into the CAS
+       unlinking the original even if it was a duplicate.
+  - DataStore::CAS::Simple:
+     - New option '=' as last element of ->fanout causes content files to be named
+        with the full hash as the filename, instead of the remainder of the hash that
+        wasn't part of the directories.
+     - Remove attribute _fanout_regex which never should have been documented
+        as if it were public.
+     - New methods ->path_parts_for_hash and ->path_for_hash
+     - Raise the limits on max directory fanout

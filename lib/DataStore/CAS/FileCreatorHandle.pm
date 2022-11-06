@@ -48,4 +48,16 @@ objects.
 
   Passes through to C<$cas-E<gt>_handle_close($handle, ...)>
 
+=head2 read
+
+Always returns 0
+
+=head2 readline
+
+Always returns C<undef>.
+
+=head2 eof
+
+Always returns 1 (handle cannot be read)
+
 =cut
