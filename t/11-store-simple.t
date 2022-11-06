@@ -125,10 +125,16 @@ subtest test_get_put => sub {
 };
 
 subtest test_hardlink_optimization => sub {
-	file('cas_tmp', 'linktest.1')->touch;
-	plan skip_all => 'hardlinks don\'t preserve inode number on this filesystem'
-		unless try { link(file('cas_tmp', 'linktest.1'), file('cas_tmp', 'linktest.2')) }
-		&& file('cas_tmp', 'linktest.1')->stat->ino == file('cas_tmp', 'linktest.2')->stat->ino;
+	my $f1= file('cas_tmp', 'linktest.1');
+	my $f2= file('cas_tmp', 'linktest.2');
+	$f1->touch;
+	$f2->remove;
+	my $can_link= try { link($f1, $f2) or diag "link: $!" };
+	my $can_cmp_inode= $f1->stat->ino == $f2->stat->ino;
+
+	plan skip_all => 'hardlinks aren\'t available'
+		unless $can_link;
+
 	$casdir->rmtree(0, 0);
 	$casdir2->rmtree(0, 0);
 	$casdir3->rmtree(0, 0);
@@ -154,15 +160,52 @@ subtest test_hardlink_optimization => sub {
 
 	my $stat1= stat( $file->local_file ) or die "stat: $!";
 	my $stat2= stat( $file2->local_file ) or die "stat: $!";
-	is( $stat1->dev.','.$stat1->ino, $stat2->dev.','.$stat2->ino, 'inodes match - hardlink succeeded' );
+	is( $stat1->dev.','.$stat1->ino, $stat2->dev.','.$stat2->ino, 'inodes match - hardlink succeeded' )
+		if $can_cmp_inode;
 
 	# make sure it doesn't get the same hash when copied to a cas with different digest
 	is( $cas3->put($file, { reuse_hash => 1, hardlink => 1 }), $hash256, 'correct sha-256 hash from sha-1 file' );
 	my $file3= $cas3->get($hash256);
 	my $stat3= stat( $file3->local_file ) or die "stat: $!";
-	is( $stat3->dev.','.$stat3->ino, $stat1->dev.','.$stat1->ino, 'inodes match - hardlink succeeded' );
+	is( $stat3->dev.','.$stat3->ino, $stat1->dev.','.$stat1->ino, 'inodes match - hardlink succeeded' )
+		if $can_cmp_inode;
 
 	is( $cas1->put($file3, { reuse_hash => 1, hardlink => 1 }), $hash1, 'correct sha-1 hash from sha-2 file' );
+
+	done_testing;
+};
+
+subtest test_move_optimization => sub {
+	my $f1= file('cas_tmp', 'movetest.1');
+	my $f2= file('cas_tmp', 'movetest.2');
+	$f1->touch;
+	$f2->remove;
+	my $f1_ino= $f1->stat->ino;
+	rename($f1, $f2);
+	my $can_cmp_inode= $f1_ino == $f2->stat->ino;
+
+	$casdir->rmtree(0, 0);
+	$casdir2->rmtree(0, 0);
+	mkdir($casdir) or die "$!";
+	mkdir($casdir2) or die "$!";
+	
+	my $cas1= new_ok('DataStore::CAS::Simple', [ path => $casdir,  create => 1, digest => 'SHA-1' ]);
+	my $cas2= new_ok('DataStore::CAS::Simple', [ path => $casdir2, create => 1, digest => 'SHA-1' ]);
+
+	my $str= 'Testing Testing Testing';
+	my $hash1= '36803d17c40ace10c936ab493d7a957c60bdce4a';
+	my $hash256= 'e6ec36e4c3abf21935f8555c5f2c9ce755d67858291408ec02328140ae1ac8b0';
+
+	# Simple test of insert+move
+	$f1->spew($str);
+	$f1_ino= $f1->stat->ino;
+	is( $cas1->put($f1, { move => 1 }), $hash1, 'correct sha-1 hash' );
+	ok( !-f $f1, 'source no longer exists' );
+	is( file($cas1->get($hash1)->local_file)->stat->ino, $f1_ino, 'same inode, move successful' );
+
+	# Ensure CAS files don't get moved
+	dies_like { $cas2->put($cas1->get($hash1), { move => 1 }) } qr/delete/, 'prevent deleting from CAS';
+	ok( $cas1->get($hash1), 'cas1 still has the file' );
 
 	done_testing;
 };

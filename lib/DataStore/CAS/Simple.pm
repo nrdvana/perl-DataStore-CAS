@@ -287,10 +287,10 @@ sub _get_hex_and_fanout_functions {
 	# When given a digest, it can be raw bytes, or hex.  The  hex one is double the length.
 	my $tohex= sub {
 		my $hash= $_[2];
-		length $hash == $hexlen? $hash
-		: length $hash == $rawlen? _to_hex($hash)
-		: croak "Invalid length for checksum of $digest: "
-			.length($hash) . ' "'._printable($hash).'"';
+		my $len= length($hash) || 0;
+		$len == $hexlen? $hash
+		: $len == $rawlen? _to_hex($hash)
+		: croak "Invalid length for checksum of $digest: $len "._quoted($hash);
 	};
 
 	# Create a function that splits a digest into the path components
@@ -304,13 +304,13 @@ sub _get_hex_and_fanout_functions {
 	$re = qr/$re/;
 	my $split= ($filename_type eq '=')? sub {
 			my $hash= $_[0];
-			$hash= $tohex->($hash) if length $hash != $hexlen;
+			$hash= $tohex->($hash) if $hexlen != (length($hash) || 0);
 			my @dirs= ($hash =~ $re) or croak "can't split hash '$hash' into requested fanout";
 			return @dirs, $hash;
 		}
 		: ($filename_type eq '*')? sub {
 			my $hash= $_[0];
-			$hash= $tohex->($hash) if length $hash != $hexlen;
+			$hash= $tohex->($hash) if $hexlen != (length($hash) || 0);
 			my @dirs= ($hash =~ $re) or croak "can't split hash '$hash' into requested fanout";
 			return @dirs;
 		}
@@ -324,10 +324,11 @@ sub _to_hex {
 	$tmp =~ s/./ sprintf("%02X", $_) /ge;
 	$tmp;
 }
-sub _printable {
+sub _quoted {
 	my $tmp= shift;
+	return "(undef)" unless defined $tmp;
 	$tmp =~ s/[\0-\x1F\x7F]/ sprintf("\\x%02X", $_) /ge;
-	$tmp;
+	qq{"$tmp"};
 }
 
 sub _is_dir_empty {
@@ -430,6 +431,126 @@ sub get {
 	}, 'DataStore::CAS::Simple::File';
 }
 
+=head2 put
+
+See L<DataStore::CAS/put> for details.
+
+=head2 put_scalar
+
+See L<DataStore::CAS/put_scalar> for details.
+
+=head2 put_file
+
+See L<DataStore::CAS/put_file> for details. In particular, heed the warnings
+about using the 'hardlink' and 'reuse_hash' flag.
+
+DataStore::CAS::Simple has special support for the flags 'move' and 'hardlink'.
+If your source is a real file on the same filesystem by the same owner and/or
+group, C<< { move => 1 } >> will move the file instead of copying it.  (If it
+is a different filesystem or ownership can't be changed, it gets copied and the
+original gets unlinked).  If the file is a real file on the same filesystem with
+correct owner and permissions, C<< { hardlink => 1 } >> will link the file into
+the CAS instead of copying it.
+
+=cut
+
+sub put_file {
+	my ($self, $file, $flags)= @_;
+	my $is_cas_file= ref $file && ref($file)->isa('DataStore::CAS::File');
+	
+	# Can only optimize if source is a real file
+	if ($flags->{hardlink} || ($flags->{move} && !$is_cas_file)) {
+		my $fname= 
+			($is_cas_file && $file->can('local_file') and length $file->local_file)? $file->local_file
+			: (ref $file && ref($file)->isa('Path::Class::File'))? "$file"
+			: (!ref $file)? $file
+			: undef;
+		if ($fname && -f $fname) {
+			my %known_hashes= $flags->{known_hashes}? %{$flags->{known_hashes}} : ();
+			# Apply reuse_hash feature, if requested
+			$known_hashes{$file->store->digest}= $file->hash
+				if $is_cas_file && $flags->{reuse_hash};
+			# Calculate the hash if it wasn't given.
+			my $hash= ($known_hashes{$self->digest} ||= $self->calculate_file_hash($fname));
+			# Have it already?
+			if (-f $self->path_for_hash($hash)) {
+				$flags->{stats}{dup_file_count}++
+					if $flags->{stats};
+				$self->_unlink_source_file($file, $flags)
+					if $flags->{move};
+				return $hash;
+			}
+			# Save hash for next step
+			$flags= { %$flags, known_hashes => \%known_hashes };
+			# Try the move or hardlink operation.  If it fails, it returns false,
+			# and this falls through to the default implementation that copies the
+			# file.
+			return $hash if $flags->{move}
+				? $self->_try_put_move($fname, $flags)
+				: $self->_try_put_hardlink($fname, $flags);
+		}
+	}
+	# Else use the default implementation which opens and reads the file.
+	return DataStore::CAS::put_file($self, $file, $flags);
+}
+
+sub _try_put_move {
+	my ($self, $file, $flags)= @_;
+	my $hash= $flags->{known_hashes}{$self->digest}; # calculated above
+	# Need to be on same filesystem for this to work.
+	my $dest= $self->path_for_hash($hash,1);
+	my $tmp= "$dest.tmp";
+	return 0 unless rename($file, $tmp);
+	# Need to be able to change ownership to current user and remove write bits.
+	try {
+		my ($mode, $uid, $gid)= (stat $tmp)[2,4,5]
+			or die "stat($tmp): $!\n";
+		if (!$flags->{dry_run}) {
+			chown($>, $), $tmp) or die "chown($> $), $tmp): $!\n"
+				if ($uid && $uid != $>) or ($gid && $gid != $) );
+			chmod(0444, $tmp) or die "chmod(0444, $tmp): $!\n"
+				if 0444 != ($mode & 0777);
+			rename($tmp, $dest)
+				or die "rename($tmp, $dest): $!\n";
+		}
+		# record that we added a new hash, if stats enabled.
+		if ($flags->{stats}) {
+			$flags->{stats}{new_file_count}++;
+			push @{ $flags->{stats}{new_files} ||= [] }, $hash;
+		}
+		$hash;
+	}
+	catch {
+		warn "Can't optimize CAS insertion with move: $_";
+		unlink $tmp;
+		0;
+	};
+}
+
+sub _try_put_hardlink {
+	my ($self, $file, $flags)= @_;
+	my $hash= $flags->{known_hashes}{$self->digest}; # calculated above
+	# Refuse to link a file that is writeable by anyone.
+	my ($mode, $uid, $gid)= (stat $file)[2,4,5];
+	defined $mode && !($mode & 0222)
+		or return 0;
+	# Refuse to link a file owned by anyone else other than root
+	(!$uid || $uid == $>) and (!$gid || $gid == $))
+		or return 0;
+	# looks ok.
+	my $dest= $self->path_for_hash($hash,1);
+	$flags->{dry_run}
+		or link($file, $dest)
+		or return 0;
+	# record that we added a new hash, if stats enabled.
+	if ($flags->{stats}) {
+		$flags->{stats}{new_file_count}++;
+		push @{ $flags->{stats}{new_files} ||= [] }, $hash;
+	}
+	# it worked
+	return $hash;
+}
+
 =head2 new_write_handle
 
 See L<DataStore::CAS/new_write_handle> for details.
@@ -520,12 +641,15 @@ sub _commit_file {
 		}
 	}
 	else {
-		# link it into place
-		# we check for missing directories after the first failure,
+		# make it read-only
+		chmod(0444, "$source_file") or croak "chmod(0444, $source_file): $!";
+		
+		# Rename it into place
+		# Check for missing directories after the first failure,
 		#   in the spirit of keeping the common case fast.
 		$flags->{dry_run}
-			or link($source_file, $dest_name)
-			or ($self->path_for_hash($hash, 1) and link($source_file, $dest_name))
+			or rename("$source_file", $dest_name)
+			or ($self->path_for_hash($hash, 1) and rename($source_file, $dest_name))
 			or croak "rename($source_file => $dest_name): $!";
 		# record that we added a new hash, if stats enabled.
 		if ($flags->{stats}) {
@@ -534,99 +658,6 @@ sub _commit_file {
 		}
 	}
 	$hash;
-}
-
-=head2 put
-
-See L<DataStore::CAS/put> for details.
-
-=head2 put_scalar
-
-See L<DataStore::CAS/put_scalar> for details.
-
-=head2 put_file
-
-See L<DataStore::CAS/put_file> for details. In particular, heed the warnings
-about using the 'hardlink' and 'reuse_hash' flag.
-
-DataStore::CAS::Simple has special support for the flag 'hardlink'.  If your
-source is a real file, or instance of L<DataStore::CAS::File> from another
-DataStore::CAS::Simple, C<{ hardlink =E<gt> 1 }> will link to the file instead
-of copying it.
-
-=cut
-
-sub put_file {
-	my ($self, $file, $flags)= @_;
-
-	# Copied logic from superclass, because we might not get there
-	my $is_cas_file= ref $file && ref($file)->isa('DataStore::CAS::File');
-	if ($flags->{reuse_hash} && $is_cas_file) {
-		$flags->{known_hashes} ||= {};
-		$flags->{known_hashes}{ $file->store->digest }= $file->hash;
-	}
-
-	# Here is where we detect opportunity to perform optimized hard-linking
-	#  when copying to and from CAS implementations which are backed by
-	#  plain files.
-	if ($flags->{hardlink}) {
-		my $hardlink_source= 
-			($is_cas_file && $file->can('local_file') and length $file->local_file)? $file->local_file
-			: (ref $file && ref($file)->isa('Path::Class::File'))? "$file"
-			: (!ref $file)? $file
-			: undef;
-		if (defined $hardlink_source) {
-			# Try hard-linking it.  If fails, (i.e. cross-device) fall back to regular behavior
-			my $hash=
-				try { $self->_put_hardlink($file, $hardlink_source, $flags) }
-				catch { undef; };
-			return $hash if defined $hash;
-		}
-	}
-	# Else use the default implementation which opens and reads the file.
-	goto \&DataStore::CAS::put_file;
-}
-
-sub _put_hardlink {
-	my ($self, $file, $hardlink_source, $flags)= @_;
-
-	# If we know the hash, try linking directly to the final name.
-	my $hash= $flags->{known_hashes}{$self->digest};
-	if (defined $hash) {
-		$self->_commit_file($hardlink_source, $hash, $flags);
-		return $hash;
-	}
-
-	# If we don't know the hash, we first link to a temp file, to find out
-	# whether we can, and then calculate the hash, and then rename our link.
-	# This way we can fall back to regular behavior without double-reading
-	# the source file.
-	
-	# Use File::Temp to atomically get a unique filename, which we use as a prefix.
-	my $temp_file= File::Temp->new( TEMPLATE => 'temp-XXXXXXXX', DIR => $self->path );
-	my $temp_link= $temp_file."-lnk";
-	link( $hardlink_source, $temp_link )
-		or return undef;
-	
-	# success - we don't need to copy the file, just checksum it and rename.
-	# use try/catch so we can unlink our tempfile
-	return
-		try {
-			# Calculate hash
-			open( my $handle, '<:raw', $temp_link ) or die "open: $!";
-			my $digest= $self->_new_digest->addfile($handle);
-			$hash= $digest->hexdigest;
-			close $handle or die "close: $!";
-
-			# link to final correct name
-			$self->_commit_file($temp_link, $hash, $flags);
-			unlink($temp_link);
-			$hash;
-		}
-		catch {
-			unlink($temp_link);
-			undef;
-		};
 }
 
 =head2 validate

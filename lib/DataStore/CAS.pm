@@ -74,11 +74,12 @@ Read-only.  The name of the digest algorithm being used.
 
 Subclasses must set this during their constructor.
 
+The algorithm should be available from the L<Digest> module, or else the
+subclass will need to provide a few additional methods like L</calculate_hash>.
+
 =head2 hash_of_null
 
-The digest hash of the empty string.  The cached result of
-
-  $cas->put('', { dry_run => 1 })
+The digest hash of the empty string.
 
 =cut
 
@@ -87,7 +88,27 @@ requires 'digest';
 has hash_of_null => ( is => 'lazy' );
 
 sub _build_hash_of_null {
-	return $_[0]->put('', { dry_run => 1 });
+	return shift->calculate_hash('');
+}
+
+=head2 calculate_hash
+
+Return the hash of a scalar (or scalar ref) in memory.
+
+=head2 calculate_file_hash
+
+Return the hash of a file on disk.
+
+=cut
+
+sub calculate_hash {
+	my $self= shift;
+	Digest->new($self->digest)->add(ref $_[0]? ${$_[0]} : $_[0])->hexdigest;
+}
+
+sub calculate_file_hash {
+	my ($self, $file)= @_;
+	Digest->new($self->digest)->addfile($file)->hexdigest;
 }
 
 =head1 METHODS
@@ -117,7 +138,7 @@ more control over which method is called, call it directly.
 
 =item *
 
-Scalars are passed to L</put_scalar>.
+Scalars and Scalar-refs are passed to L</put_scalar>.
 
 =item *
 
@@ -133,14 +154,46 @@ Dies if it encounters anything else.
 
 =back
 
-The return value is the digest hash of the stored data.
+The C<%optional_flags> can contain a wide variety of parameters, but
+these are supported by all CAS subclasses:
 
-See L</new_write_handle> for the discussion of C<flags>.
+=over
+
+=item dry_run => $bool
+
+Setting "dry_run" to true will calculate the hash of the $thing, and go through
+the motions of writing it, but not store it.
+
+=item known_hashes => \%digest_hashes
+
+  { known_hashes => { SHA1 => '0123456789...' } }
+
+Use this to skip calculation of the hash.  The hashes are keyed by Digest name,
+so it is safe to use even when the store being written to might not use the same
+digest that was already calculated.
+
+Of course, using this feature can corrupt your CAS if you don't ensure that the
+hash is correct.
+
+=item stats => \%stats_out
+
+Setting "stats" to a hashref will instruct the CAS implementation to return
+information about the operation, such as number of bytes written, compression
+strategies used, etc.  The statistics are returned within that supplied
+hashref.  Values in the hashref are amended or added to, so you may use the
+same stats hashref for multiple calls and then see the summary for all
+operations when you are done.
+
+=back
+
+The return value is the hash checksum of the stored data, regardless of whether
+it was already present in the CAS.
 
 Example:
 
   my $stats= {};
   $cas->put("abcdef", { stats => $stats });
+  $cas->put(\$large_buffer, { stats => $stats });
   $cas->put(IO::File->new('~/file','r'), { stats => $stats });
   $cas->put(\*STDIN, { stats => $stats });
   $cas->put(Path::Class::file('~/file'), { stats => $stats });
@@ -150,7 +203,8 @@ Example:
 =cut
 
 sub put {
-	goto $_[0]->can('put_scalar') unless ref $_[1];
+	goto $_[0]->can('put_scalar')
+		if !ref $_[1] || ref $_[1] eq 'SCALAR';
 	goto $_[0]->can('put_file')
 		if ref($_[1])->isa('DataStore::CAS::File') or ref($_[1])->isa('Path::Class::File');
 	goto $_[0]->can('put_handle')
@@ -161,31 +215,48 @@ sub put {
 =head2 put_scalar
 
   $cas->put_scalar( $scalar, \%optional_flags )
+  $cas->put_scalar( \$scalar, \%optional_flags )
 
-Puts the literal string "$scalar" into the CAS.
+Puts the literal string "$scalar" into the CAS, or the scalar pointed to by a
+scalar-ref.  (a scalar-ref can help by avoiding a copy of a large scalar)
 The scalar must be a string of bytes; you get an exception if any character
 has a codepoint above 255.
 
 Returns the digest hash of the array of bytes.
 
-See L</new_write_handle> for the discussion of C<flags>.
+See L</put> for the discussion of C<%flags>.
 
 =cut
 
 sub put_scalar {
-	my ($self, $scalar, $flags)= @_;
+	my ($self, undef, $flags)= @_;
+	my $ref= ref $_[1] eq 'SCALAR'? $_[1] : \$_[1];
 
-	# Force to plain string
-	$scalar= "$scalar" if ref $scalar;
+	# Force to plain string if it is an object
+	if (ref $$ref) {
+		# TODO: croak unless object has stringify magic
+		$ref= \"$$ref";
+	}
 
 	# Can only 'put' octets, not wide-character unicode strings.
-	utf8::downgrade($scalar, 1)
+	utf8::downgrade($$ref, 1)
 		or croak "scalar must be byte string (octets).  If storing unicode,"
 			." you must reduce to a byte encoding first.";
 
-	my $handle= $self->new_write_handle($flags);
-	$handle->_write_all($scalar);
-	return $self->commit_write_handle($handle);
+	my $hash= $flags && $flags->{known_hashes} && $flags->{known_hashes}{$self->digest}
+		? $flags->{known_hashes}{$self->digest}
+		: $self->calculate_hash($ref);
+	if ($self->get($hash)) {
+		# Already have it
+		$flags->{stats}{dup_file_count}++
+			if $flags->{stats};
+		return $hash;
+	} else {
+		$flags= { ($flags? %$flags : ()), known_hashes => { $self->digest => $hash } };
+		my $handle= $self->new_write_handle($flags);
+		$handle->_write_all($$ref);
+		return $self->commit_write_handle($handle);
+	}
 }
 
 =head2 put_file
@@ -200,34 +271,33 @@ put_handle.
 
 Returns the digest hash of the data stored.
 
-See L</new_write_handle> for the discussion of C<flags>.
+See L</put> for the discussion of standard C<%flags>.
 
 Additional flags:
 
 =over
 
+=item move => $bool
+
+If move is true, and the CAS is backed by plain files on the same filesystem,
+it will move the file into the CAS, possibly changing its owner and permissions.
+Even if the file can't be moved, C<put_file> will attempt to unlink it, and die
+on failure.
+
 =item hardlink => $bool
 
-If hardlink is true, and the CAS is backed by plain files, it will hardlink
-the file directly into the CAS.
+If hardlink is true, and the CAS is backed by plain files on the same filesystem
+by the same owner and permissions as the destination CAS, it will hardlink the
+file directly into the CAS.
 
 This reduces the integrity of your CAS; use with care.  You can use the
 L</validate> method later to check for corruption.
 
-=item known_hashes => \%algorithm_digests
-
-If you already know the hash of your file, and don't want to re-calculate it,
-pass a hashref like C<{ $algorithm_name =E<gt> $digest_hash }> for this flag,
-and if this CAS is using one of those algorithms, it will use the hash you
-specified instead of re-calculating it.
-
-This reduces the integrity of your CAS; use with care.
-
-=item reuse_hash
+=item reuse_hash => $bool
 
 This is a shortcut for known_hashes if you specify an instance of
-L<DataStore::CAS::File>.  It builds a known_hashes of one item using the source
-CAS's digest algorithm.
+L<DataStore::CAS::File>.  It builds a C<known_hashes> of one item using the
+source CAS's digest algorithm.
 
 =back
 
@@ -240,25 +310,64 @@ L<DataStore::CAS::Simple> to another.
 =cut
 
 sub put_file {
-	my ($self, $fname, $flags)= @_;
-	my $fh;
-	if (ref($fname) && ref($fname)->isa('DataStore::CAS::File')) {
-		if ($flags->{reuse_hash}) {
-			$flags->{known_hashes} ||= {};
-			$flags->{known_hashes}{ $fname->store->digest }= $fname->hash;
-		}
-		$fh= $fname->open
-			or croak "Can't open '$fname': $!";
+	my ($self, $file, $flags)= @_;
+	my $is_cas_file= ref $file && ref($file)->isa('DataStore::CAS::File');
+	my %known_hashes= $flags->{known_hashes}? %{$flags->{known_hashes}} : ();
+	# Apply reuse_hash feature, if requested
+	if ($is_cas_file && $flags->{reuse_hash}) {
+		$known_hashes{$file->store->digest}= $file->hash;
+		$flags= { %$flags, known_hashes => \%known_hashes };
 	}
-	elsif (ref($fname) && $fname->can('open')) {
-		$fh= $fname->open('r')
-			or croak "Can't open '$fname': $!";
+	# It is probably better to read a file twice than to write one that
+	# doesn't need to be written.
+	# ...but can't do better than ->put_handle unless the file is a real file.
+	my $fname= !ref $file? $file
+		: $is_cas_file? (
+			$file->can('local_file') and length $file->local_file? $file->local_file : undef
+		)
+		: index(ref($file), 'Path') >= 0? "$file"
+		: undef;
+	if ($fname && -f $fname) {
+		# Calculate the hash if it wasn't given.
+		my $hash= ($known_hashes{$self->digest} ||= $self->calculate_file_hash($fname));
+		# Avoid unnecessary work
+		if ($self->get($hash)) {
+			$flags->{stats}{dup_file_count}++
+				if $flags->{stats};
+			$self->_unlink_source_file($file, $flags)
+				if $flags->{move};
+			return $hash;
+		}
+		# Save hash for next step
+		$flags= { %$flags, known_hashes => \%known_hashes };
+	}
+	my $fh;
+	if ($is_cas_file) {
+		$fh= $file->open or croak "Can't open '$file': $!";
+	}
+	elsif (ref($file) && ref($file)->can('open')) {
+		$fh= $file->open('r') or croak "Can't open '$file': $!";
 	}
 	else {
-		open($fh, '<', "$fname")
-			or croak "Can't open '$fname': $!";
+		open($fh, '<', "$fname") or croak "Can't open '$fname': $!";
 	}
-	$self->put_handle($fh, $flags);
+	my $hash= $self->put_handle($fh, $flags);
+	$self->_unlink_source_file($file, $flags)
+		if $hash && $flags->{move};
+	return $hash;
+}
+
+sub _unlink_source_file {
+	my ($self, $file, $flags)= @_;
+	return if $flags->{dry_run};
+	my $is_cas_file= ref $file && ref($file)->isa('DataStore::CAS::File');
+	if ($is_cas_file) {
+		croak "Refusing to delete origin CAS File (this can damage a CAS)\n"
+			."If you really want to do this, pass \$file->local_name and then"
+			." delete the cas entry yourself.";
+	} else {
+		unlink "$file" or croak "unlink($file): $!"
+	}
 }
 
 =head2 put_handle
@@ -266,11 +375,13 @@ sub put_file {
   $digest_hash= $cas->put_handle( \*HANDLE | IO::Handle, \%optional_flags );
 
 Reads from $io_handle and stores into the CAS.  Calculates the digest hash
-of the data as it goes.  Dies on any I/O errors.
+of the data as it goes.  Does not seek on handle, so if you supply a handle
+that is not at the start of the file, only the remainder of the file will be
+added and hashed.  Dies on any I/O errors.
 
 Returns the calculated hash when complete.
 
-See L</new_write_handle> for the discussion of C<flags>.
+See L</put> for the discussion of C<flags>.
 
 =cut
 
