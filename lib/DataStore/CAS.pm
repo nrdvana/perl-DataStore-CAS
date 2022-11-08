@@ -182,15 +182,21 @@ Example:
 
 =cut
 
+sub _thing_stringifies_to_filename {
+	my $ref= ref $_[0];
+	(!$ref && defined $_[0])
+		|| $ref->isa('Path::Class::File')
+		|| $ref->isa('Path::Tiny')
+		|| $ref->isa('File::Temp')
+}
+
 sub put {
 	my $ref= ref $_[1];
 	goto $_[0]->can('put_scalar')
 		if !$ref || $ref eq 'SCALAR';
 	goto $_[0]->can('put_file')
 		if $ref->isa('DataStore::CAS::File')
-		or $ref->isa('Path::Class::File')
-		or $ref->isa('Path::Tiny')
-		or $ref->isa('File::Temp');
+		or _thing_stringifies_to_filename($_[1]);
 	goto $_[0]->can('put_handle')
 		if $ref->isa('IO::Handle')
 		or Scalar::Util::reftype($_[1]) eq 'GLOB';
@@ -267,7 +273,9 @@ Additional flags:
 If move is true, and the CAS is backed by plain files on the same filesystem,
 it will move the file into the CAS, possibly changing its owner and permissions.
 Even if the file can't be moved, C<put_file> will attempt to unlink it, and die
-on failure.
+on failure.  Note: If you use this option with a L<File::Temp> object, this closes
+the file handle to ensure that no further writes or fd-operations are applied
+to the file which is now part of your read-only CAS.
 
 =item hardlink => $bool
 
@@ -298,8 +306,7 @@ sub put_file {
 	my ($self, $file, $flags)= @_;
 	my $ref= ref $file;
 	my $is_cas_file= $ref && $ref->isa('DataStore::CAS::File');
-	my $is_filename= !$ref || $ref->isa('Path::Class::File') || $ref->isa('Path::Tiny')
-		|| $ref->isa('File::Temp');
+	my $is_filename= _thing_stringifies_to_filename($file);
 	croak "Unhandled argument to put_file: ".($file||'(undef)')
 		unless defined $file && ($is_cas_file || $is_filename);
 
@@ -313,9 +320,9 @@ sub put_file {
 	# doesn't need to be written.
 	# ...but can't do better than ->put_handle unless the file is a real file.
 	my $fname= $is_filename? "$file"
-		: $is_cas_file && $file->can('local_file') && length $file->local_file? $file->local_file
+		: $is_cas_file && $file->can('local_file')? $file->local_file
 		: undef;
-	if (defined $fname && ($known_hashes{$self->digest} || -f $fname)) {
+	if ($known_hashes{$self->digest} || (defined $fname && -f $fname)) {
 		# Calculate the hash if it wasn't given.
 		my $hash= ($known_hashes{$self->digest} ||= $self->calculate_file_hash($fname));
 		# Avoid unnecessary work
@@ -323,7 +330,7 @@ sub put_file {
 			$flags->{stats}{dup_file_count}++
 				if $flags->{stats};
 			$self->_unlink_source_file($file, $flags)
-				if $flags->{move};
+				if $flags->{move} && defined $fname;
 			return $hash;
 		}
 		# Save hash for next step
@@ -357,6 +364,11 @@ sub _unlink_source_file {
 			."If you really want to do this, pass \$file->local_name and then"
 			." delete the cas entry yourself.";
 	} else {
+		if (ref $file && ref($file)->isa('File::Temp')) {
+			# The Simple backend closes File::Temp files to ensure they don't
+			# get written to any more. so match that behavior here.
+			$file->close;
+		}
 		unlink "$file" or croak "unlink($file): $!"
 	}
 }

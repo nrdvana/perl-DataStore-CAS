@@ -456,14 +456,16 @@ the CAS instead of copying it.
 
 sub put_file {
 	my ($self, $file, $flags)= @_;
-	my $is_cas_file= ref $file && ref($file)->isa('DataStore::CAS::File');
+	my $ref= ref $file;
+	my $is_cas_file= $ref && $ref->isa('DataStore::CAS::File');
+	my $is_filename= DataStore::CAS::_thing_stringifies_to_filename($file);
+	croak "Unhandled argument to put_file: ".($file||'(undef)')
+		unless defined $file && ($is_cas_file || $is_filename);
 	
 	# Can only optimize if source is a real file
 	if ($flags->{hardlink} || ($flags->{move} && !$is_cas_file)) {
-		my $fname= 
-			($is_cas_file && $file->can('local_file') and length $file->local_file)? $file->local_file
-			: (ref $file && ref($file)->isa('Path::Class::File'))? "$file"
-			: (!ref $file)? $file
+		my $fname= $is_filename? "$file"
+			: $is_cas_file && $file->can('local_file')? $file->local_file
 			: undef;
 		if ($fname && -f $fname) {
 			my %known_hashes= $flags->{known_hashes}? %{$flags->{known_hashes}} : ();
@@ -501,6 +503,11 @@ sub _try_put_move {
 	my $dest= $self->path_for_hash($hash,1);
 	my $tmp= "$dest.tmp";
 	return 0 unless rename($file, $tmp);
+	if (ref $file && ref($file)->isa('File::Temp')) {
+		# File::Temp creates a writable handle, and operates on the
+		# file using 'fd___' functions, so it needs closed to be safe.
+		$file->close;
+	}
 	# Need to be able to change ownership to current user and remove write bits.
 	try {
 		my ($mode, $uid, $gid)= (stat $tmp)[2,4,5]
