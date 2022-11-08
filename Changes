@@ -2,6 +2,7 @@
   - Fix bug in calculate_file_checksum
   - Improve type detection of argument to ->put
   - Fix handling of File::Temp objects in ->put_file
+  - Record VERSION in ::Simple storage dir for each class in hierarchy
   - More unit tests
   - Remove dependency on Path::Class
 

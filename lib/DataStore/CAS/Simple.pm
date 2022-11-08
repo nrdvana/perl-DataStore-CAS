@@ -242,9 +242,23 @@ sub create_store {
 
 	my $conf_dir= catdir($params{path}, 'conf');
 	mkdir($conf_dir) or croak "mkdir($conf_dir): $!";
-	$class->_write_config_setting($params{path}, 'VERSION', $class.' '.$VERSION."\n");
+	$class->_write_config_setting($params{path}, 'VERSION', $class->_hierarchy_version);
 	$class->_write_config_setting($params{path}, 'digest', $params{digest}."\n");
 	$class->_write_config_setting($params{path}, 'fanout', join(' ', @{$params{fanout}})."\n");
+}
+sub _hierarchy_version {
+	my $class= ref $_[0] || $_[0];
+	my $out= '';
+	# record the version of any class hierarchy which "isa DataStore::CAS::Simple"
+	my $hier= mro::get_linear_isa($class);
+	for (grep $_->isa(__PACKAGE__), @$hier) {
+		if (!$_->VERSION) {
+			warn "Package '$_' lacks a VERSION, weakening the protection of DataStore::CAS::Simple's versioned storage directory.";
+		} else {
+			$out .= $_ . ' ' . $_->VERSION . "\n";
+		}
+	}
+	return $out;
 }
 
 # This method loads the digest and fanout configuration and validates it
