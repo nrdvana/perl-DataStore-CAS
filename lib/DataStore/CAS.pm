@@ -6,7 +6,7 @@ use Try::Tiny;
 require Scalar::Util;
 require Symbol;
 
-our $VERSION= '0.03';
+our $VERSION= '0.04';
 our @CARP_NOT= qw( DataStore::CAS::File DataStore::CAS::VirtualHandle );
 
 # ABSTRACT: Abstract base class for Content Addressable Storage
@@ -22,16 +22,16 @@ With a good message digest algorithm, one checksum will statistically only
 ever refer to one file, even though the permutations of the checksum are
 tiny compared to all the permutations of bytes that they can represent.
 
-Perl uses the term 'hash' to refer to a mapping of key/value pairs, which
-creates a little confusion.  The documentation of this and related modules
-try to use the phrase "digest hash" to clarify when we are referring to the
-output of a digest function vs. a perl key-value mapping.
-
 In short, a CAS is a key/value mapping where small-ish keys are determined
 from large-ish data but no two pieces of data will ever end up with the same
 key, thanks to astronomical probabilities.  You can then use the small-ish
 key as a reference to the large chunk of data, as a sort of compression
 technique.
+
+Note: Perl uses the term 'hash' to refer to a mapping of key/value pairs,
+which creates a little confusion.  The documentation of this and related
+modules try to use the phrase "digest hash" to clarify when we are referring
+to the output of a digest function vs. a perl key-value hash table.
 
 =head1 PURPOSE
 
@@ -54,13 +54,22 @@ This has applications in backups and content distribution.
   );
   
   # Store content, and get its hash code
-  my $hash= $cas->put_scalar("Blah");
+  my $hash0= $cas->put($something_ambiguous);
+  my $hash1= $cas->put_scalar($data_bytes);
+  my $hash2= $cas->put_file($filename);
+  my $hash3= $cas->put_handle(\*STDIN);
   
-  # Retrieve a reference to that content
+  my $writer= $cas->new_write_handle;
+  for (1..10) {
+    $writer->print($_);
+  }
+  my $hash4= $writer->commit;
+  
+  # Retrieve a reference to that content, or undef for unknown hash
   my $file= $cas->get($hash);
   
   # Inspect the file's attributes
-  $file->size < 1024*1024 or die "Use a smaller file";
+  say "File is " . $file->size . " bytes";
   
   # Open a handle to that file (possibly returning a virtual file handle)
   my $handle= $file->open;
@@ -122,7 +131,8 @@ Scalars and Scalar-refs are passed to L</put_scalar>.
 
 =item *
 
-Instances of L<DataStore::CAS::File> or L<Path::Class::File> are passed to L</put_file>.
+Instances of L<DataStore::CAS::File>, L<Path::Class::File>, L<Path::Tiny>,
+or L<Fie::Temp> are passed to L</put_file>.
 
 =item *
 
@@ -647,7 +657,7 @@ package DataStore::CAS::File;
 use strict;
 use warnings;
 
-our $VERSION= '0.03';
+our $VERSION= '0.04';
 
 sub store { $_[0]{store} }
 sub hash  { $_[0]{hash} }
@@ -683,7 +693,7 @@ package DataStore::CAS::VirtualHandle;
 use strict;
 use warnings;
 
-our $VERSION= '0.03';
+our $VERSION= '0.04';
 
 sub new {
 	my ($class, $cas, $fields)= @_;
@@ -786,7 +796,7 @@ use strict;
 use warnings;
 use parent -norequire => 'DataStore::CAS::VirtualHandle';
 
-our $VERSION= '0.03';
+our $VERSION= '0.04';
 
 # For write-handles, commit data to the CAS and return the digest hash for it.
 sub commit   { $_[0]->_cas->commit_write_handle(@_) }
@@ -802,5 +812,13 @@ sub write    { $_[0]->_cas->_handle_write(@_) }
 sub eof      { return 1; }
 sub read     { return 0; }
 sub readline { return undef; }
+
+=head1 THANKS
+
+Portions of this software were funded by
+L<Clippard Instrument Laboratory|https://www.clippard.com>.
+Thanks for supporting Open Source.
+
+=cut
 
 1;
