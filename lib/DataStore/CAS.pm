@@ -91,26 +91,6 @@ sub _build_hash_of_null {
 	return shift->calculate_hash('');
 }
 
-=head2 calculate_hash
-
-Return the hash of a scalar (or scalar ref) in memory.
-
-=head2 calculate_file_hash
-
-Return the hash of a file on disk.
-
-=cut
-
-sub calculate_hash {
-	my $self= shift;
-	Digest->new($self->digest)->add(ref $_[0]? ${$_[0]} : $_[0])->hexdigest;
-}
-
-sub calculate_file_hash {
-	my ($self, $file)= @_;
-	Digest->new($self->digest)->addfile($file)->hexdigest;
-}
-
 =head1 METHODS
 
 =head2 get
@@ -203,13 +183,18 @@ Example:
 =cut
 
 sub put {
+	my $ref= ref $_[1];
 	goto $_[0]->can('put_scalar')
-		if !ref $_[1] || ref $_[1] eq 'SCALAR';
+		if !$ref || $ref eq 'SCALAR';
 	goto $_[0]->can('put_file')
-		if ref($_[1])->isa('DataStore::CAS::File') or ref($_[1])->isa('Path::Class::File');
+		if $ref->isa('DataStore::CAS::File')
+		or $ref->isa('Path::Class::File')
+		or $ref->isa('Path::Tiny')
+		or $ref->isa('File::Temp');
 	goto $_[0]->can('put_handle')
-		if ref($_[1])->isa('IO::Handle') or (Scalar::Util::reftype($_[1]) eq 'GLOB');
-	croak("Can't 'put' object of type ".ref($_[1]));
+		if $ref->isa('IO::Handle')
+		or Scalar::Util::reftype($_[1]) eq 'GLOB';
+	croak("Can't 'put' object of type $ref");
 }
 
 =head2 put_scalar
@@ -311,7 +296,13 @@ L<DataStore::CAS::Simple> to another.
 
 sub put_file {
 	my ($self, $file, $flags)= @_;
-	my $is_cas_file= ref $file && ref($file)->isa('DataStore::CAS::File');
+	my $ref= ref $file;
+	my $is_cas_file= $ref && $ref->isa('DataStore::CAS::File');
+	my $is_filename= !$ref || $ref->isa('Path::Class::File') || $ref->isa('Path::Tiny')
+		|| $ref->isa('File::Temp');
+	croak "Unhandled argument to put_file: ".($file||'(undef)')
+		unless defined $file && ($is_cas_file || $is_filename);
+
 	my %known_hashes= $flags->{known_hashes}? %{$flags->{known_hashes}} : ();
 	# Apply reuse_hash feature, if requested
 	if ($is_cas_file && $flags->{reuse_hash}) {
@@ -321,13 +312,10 @@ sub put_file {
 	# It is probably better to read a file twice than to write one that
 	# doesn't need to be written.
 	# ...but can't do better than ->put_handle unless the file is a real file.
-	my $fname= !ref $file? $file
-		: $is_cas_file? (
-			$file->can('local_file') and length $file->local_file? $file->local_file : undef
-		)
-		: index(ref($file), 'Path') >= 0? "$file"
+	my $fname= $is_filename? "$file"
+		: $is_cas_file && $file->can('local_file') && length $file->local_file? $file->local_file
 		: undef;
-	if ($fname && -f $fname) {
+	if (defined $fname && ($known_hashes{$self->digest} || -f $fname)) {
 		# Calculate the hash if it wasn't given.
 		my $hash= ($known_hashes{$self->digest} ||= $self->calculate_file_hash($fname));
 		# Avoid unnecessary work
@@ -345,11 +333,14 @@ sub put_file {
 	if ($is_cas_file) {
 		$fh= $file->open or croak "Can't open '$file': $!";
 	}
-	elsif (ref($file) && ref($file)->can('open')) {
-		$fh= $file->open('r') or croak "Can't open '$file': $!";
+	elsif ($ref && $ref->can('openr')) {
+		$fh= $file->openr or croak "Can't open '$file': $!";
+	}
+	elsif ($is_filename) {
+		open($fh, '<', $fname) or croak "Can't open '$fname': $!";
 	}
 	else {
-		open($fh, '<', "$fname") or croak "Can't open '$fname': $!";
+		croak "Don't know how to open '$file'";
 	}
 	my $hash= $self->put_handle($fh, $flags);
 	$self->_unlink_source_file($file, $flags)
@@ -462,6 +453,28 @@ sub new_write_handle {
 
 # This must be implemented by subclasses
 requires 'commit_write_handle';
+
+=head2 calculate_hash
+
+Return the hash of a scalar (or scalar ref) in memory.
+
+=head2 calculate_file_hash
+
+Return the hash of a file on disk.
+
+=cut
+
+sub calculate_hash {
+	my $self= shift;
+	Digest->new($self->digest)->add(ref $_[0]? ${$_[0]} : $_[0])->hexdigest;
+}
+
+sub calculate_file_hash {
+	my ($self, $file)= @_;
+	open my $fh, '<', $file or croak "open($file): $!";
+	binmode $fh;
+	Digest->new($self->digest)->addfile($fh)->hexdigest;
+}
 
 =head2 validate
 

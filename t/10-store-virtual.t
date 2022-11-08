@@ -3,8 +3,8 @@ use strict;
 use warnings;
 use Test::More;
 use Try::Tiny;
-use Path::Class;
 use Data::Dumper;
+use File::Temp;
 use File::stat;
 
 sub dies(&$) {
@@ -41,5 +41,10 @@ my $hash= 'd6bb5107d7bf572751db734847db1bc7';
 is( $cas->put($str), $hash, 'put' );
 ok( my $f= $cas->get($hash)->open, 'get/open' );
 is( scalar(<$f>), $str, 'read contents' );
+
+my $tmpf= File::Temp->new;
+$tmpf->print($str);
+$tmpf->seek(0,0);
+is( $cas->put($tmpf), $hash, 'put File::Temp' );
 
 done_testing;

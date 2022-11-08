@@ -3,7 +3,6 @@ use strict;
 use warnings;
 use Test::More;
 use Try::Tiny;
-use Path::Class;
 use Data::Dumper;
 use File::stat;
 
