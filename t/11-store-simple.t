@@ -8,6 +8,7 @@ use warnings;
 use Test::More;
 use Try::Tiny;
 use Data::Dumper;
+use IO::File;
 use File::stat;
 use File::Spec::Functions 'catfile','catdir';
 use File::Path 'remove_tree';
