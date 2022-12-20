@@ -54,6 +54,4 @@ jobs:
         AUTHOR_TESTING: 1
         RELEASE_TESTING: 1
       run: |
-        perl Makefile.PL
-        make
-        make test
+        prove -lv
