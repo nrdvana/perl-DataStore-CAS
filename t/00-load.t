@@ -1,5 +1,4 @@
-#! /usr/bin/env perl -T
-
+#!perl -T
 use Test::More;
 my @pkgs= qw(
 		DataStore::CAS

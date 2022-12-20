@@ -54,4 +54,4 @@ jobs:
         AUTHOR_TESTING: 1
         RELEASE_TESTING: 1
       run: |
-        prove -lv
+        prove -lvT t/*.t

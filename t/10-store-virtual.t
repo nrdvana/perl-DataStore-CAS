@@ -1,4 +1,4 @@
-#! /usr/bin/env perl -T
+#!perl -T
 use strict;
 use warnings;
 use Test::More;

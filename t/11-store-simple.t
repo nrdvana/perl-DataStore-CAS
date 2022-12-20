@@ -1,4 +1,4 @@
-#! /usr/bin/env perl -T
+#!perl -T
 
 for (qw( DataStore::CAS DataStore::CAS::Simple DataStore::CAS::File Test::Builder Test::More )) {
 	push @{$_.'::CARP_NOT'}, qw( DataStore::CAS DataStore::CAS::Simple DataStore::CAS::File Test::Builder Test::More );

@@ -250,6 +250,7 @@ sub _hierarchy_version {
 	my $class= ref $_[0] || $_[0];
 	my $out= '';
 	# record the version of any class hierarchy which "isa DataStore::CAS::Simple"
+	require MRO::Compat if $] < 5.10;
 	my $hier= mro::get_linear_isa($class);
 	for (grep $_->isa(__PACKAGE__), @$hier) {
 		if (!$_->VERSION) {
