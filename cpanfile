@@ -1,0 +1,9 @@
+requires 'Carp';
+requires 'Digest';
+requires 'File::Spec';
+requires 'File::Temp';
+requires 'Moo';
+requires 'Moo::Role';
+requires 'Scalar::Util';
+requires 'Symbol';
+requires 'Try::Tiny';
