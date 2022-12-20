@@ -194,10 +194,17 @@ Example:
 
 sub _thing_stringifies_to_filename {
 	my $ref= ref $_[0];
-	(!$ref && defined $_[0])
-		|| $ref->isa('Path::Class::File')
-		|| $ref->isa('Path::Tiny')
-		|| $ref->isa('File::Temp')
+	!$ref? defined $_[0] && length $_[0]
+	: $ref->isa('Path::Class::File')
+	|| $ref->isa('Path::Tiny')
+	|| $ref->isa('File::Temp')
+	|| -e "$_[0]"
+}
+sub _describe_unputtable {
+	!defined $_[0]? 'undef'
+	: !ref $_[0]? '"'.$_[0].'"'
+	: !Scalar::Util::blessed($_[0])? ref($_[0]).' ref'
+	: 'object of '.ref($_[0]).' (stringifies to "'.$_[0].'")'
 }
 
 sub put {
@@ -210,7 +217,7 @@ sub put {
 	goto $_[0]->can('put_handle')
 		if $ref->isa('IO::Handle')
 		or Scalar::Util::reftype($_[1]) eq 'GLOB';
-	croak("Can't 'put' object of type $ref");
+	croak("Unhandled argument to ->put : "._describe_unputtable($_[1]));
 }
 
 =head2 put_scalar
@@ -317,8 +324,8 @@ sub put_file {
 	my $ref= ref $file;
 	my $is_cas_file= $ref && $ref->isa('DataStore::CAS::File');
 	my $is_filename= _thing_stringifies_to_filename($file);
-	croak "Unhandled argument to put_file: ".($file||'(undef)')
-		unless defined $file && ($is_cas_file || $is_filename);
+	croak "Unhandled argument to ->put_file : "._describe_unputtable($file)
+		unless $is_cas_file || $is_filename;
 
 	my %known_hashes= $flags->{known_hashes}? %{$flags->{known_hashes}} : ();
 	# Apply reuse_hash feature, if requested
