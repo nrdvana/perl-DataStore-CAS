@@ -1,5 +1,5 @@
 #!perl -T
-use Test::More;
+use Test::More 1;
 my @pkgs= qw(
 		DataStore::CAS
 		DataStore::CAS::File
