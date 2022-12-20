@@ -12,6 +12,7 @@ use IO::File;
 use File::stat;
 use File::Spec::Functions 'catfile','catdir';
 use File::Path 'remove_tree';
+use Digest::SHA;
 
 sub slurp {
 	my $f= shift;

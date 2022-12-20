@@ -1,3 +1,9 @@
+0.06 - 2022-12-20
+  - Better error reporting for bad arguments to ->put_file
+  - cpanfile and GitHub CI
+  - Adaptor role for Catalyst::Controller::SimpleCAS
+  - Actually support and fix unit tests on perl 5.8
+
 0.05 - 2022-11-11
   - Fix unit test 11-store-simple for perl 5.12 and earlier
 
