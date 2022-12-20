@@ -22,26 +22,33 @@ With a good message digest algorithm, one checksum will statistically only
 ever refer to one file, even though the permutations of the checksum are
 tiny compared to all the permutations of bytes that they can represent.
 
-In short, a CAS is a key/value mapping where small-ish keys are determined
-from large-ish data but no two pieces of data will ever end up with the same
-key, thanks to astronomical probabilities.  You can then use the small-ish
-key as a reference to the large chunk of data, as a sort of compression
-technique.
+In short, a CAS is a key/value mapping where the key is determined from the
+value, and thanks to astronomical probability, every value will get a distinct
+key.  You can then use the key as a shorthand reference for the value.
+Most importantly, every CAS using the same digest algorithm will generate the
+same key for a value, without a central server coordinating it.
 
-Note: Perl uses the term 'hash' to refer to a mapping of key/value pairs,
-which creates a little confusion.  The documentation of this and related
-modules try to use the phrase "digest hash" to clarify when we are referring
-to the output of a digest function vs. a perl key-value hash table.
+This is a Role, requiring the implementing class to provide attribute
+L</digest>, and methods L</get>, L</commit_write_handle>, L</delete>,
+L</iterator>, and L</open_file>.
+
+Note: Perl uses the term 'hash' to refer to key/value hash tables, which
+creates a little confusion.  In fact, the key-hashing part of hash tables is
+nearly the same concept as a CAS except that hash tables use a tiny digest
+function that often does collide with other keys.
+The documentation of this and related modules try to use the phrase
+"digest hash" to clarify when talking about the output of a digest function
+vs. a perl hash table.
 
 =head1 PURPOSE
 
 One great use for CAS is finding and merging duplicated content.  If you
 take two identical files (which you didn't know were identical) and put them
-both into a CAS, you will get back the same hash, telling you that they are
-the same.  Also, the file will only be stored once, saving disk space.
+both into a CAS, you will get back the same digest hash, telling you that they
+are the same.  Also, the file will only be stored once, saving disk space.
 
-Another great use for CAS is the ability for remote systems to compare an
-inventory of files and see which ones are absent on the other system.
+Another great use for CAS is for remote systems to compare an inventory of
+files and see which ones are absent on the other system.
 This has applications in backups and content distribution.
 
 =head1 SYNOPSIS
@@ -66,13 +73,13 @@ This has applications in backups and content distribution.
   my $hash4= $writer->commit;
   
   # Retrieve a reference to that content, or undef for unknown hash
-  my $file= $cas->get($hash);
+  my $casfile= $cas->get($hash);
   
   # Inspect the file's attributes
-  say "File is " . $file->size . " bytes";
+  say "File is " . $casfile->size . " bytes";
   
   # Open a handle to that file (possibly returning a virtual file handle)
-  my $handle= $file->open;
+  my $handle= $casfile->open;
   my @lines= <$handle>;
 
 =head1 ATTRIBUTES
@@ -81,14 +88,15 @@ This has applications in backups and content distribution.
 
 Read-only.  The name of the digest algorithm being used.
 
-Subclasses must set this during their constructor.
+Implementors must provide this constant from the time they are constructed.
 
 The algorithm should be available from the L<Digest> module, or else the
 subclass will need to provide a few additional methods like L</calculate_hash>.
 
 =head2 hash_of_null
 
-The digest hash of the empty string.
+The digest hash of the empty string.  CAS instances should always have this
+file available, to be used as a test whether the CAS is functioning.
 
 =cut
 
@@ -107,7 +115,7 @@ sub _build_hash_of_null {
   $cas->get( $digest_hash )
 
 Returns a L<DataStore::CAS::File> object for the given hash, if the hash
-exists in storage. Else, returns undef.
+exists in storage. Else, returns C<undef>.
 
 This method is pure-virtual and must be implemented in the subclass.
 
@@ -397,9 +405,10 @@ sub _unlink_source_file {
 Reads from $io_handle and stores into the CAS.  Calculates the digest hash
 of the data as it goes.  Does not seek on handle, so if you supply a handle
 that is not at the start of the file, only the remainder of the file will be
-added and hashed.  Dies on any I/O errors.
+added and hashed.  The handle is forced into binary mode.
+Dies on any I/O errors.
 
-Returns the calculated hash when complete.
+Returns the calculated digest hash when complete.
 
 See L</put> for the discussion of C<flags>.
 
@@ -470,7 +479,7 @@ Write handles will probably be an instance of L<FileCreatorHandle|DataStore::CAS
 
 This closes the given write-handle, and then finishes calculating its digest
 hash, and then stores it into the CAS (unless the handle was created with the
-dry_run flag).  It returns the digest_hash of the data.
+dry_run flag).  It returns the digest hash of the data.
 
 =cut
 
