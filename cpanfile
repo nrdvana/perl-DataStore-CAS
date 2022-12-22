@@ -9,7 +9,7 @@ requires 'Moo::Role';
 requires 'Scalar::Util';
 requires 'Symbol';
 requires 'Try::Tiny';
-requires 'MRO::Compat' if $] < 5.10;
+requires 'MRO::Compat' if $] < 5.010;
 on 'test' => sub {
 	requires 'Test::More', '>=1';
 };

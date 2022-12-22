@@ -1,3 +1,6 @@
+0.07 - 2022-12-22
+  - Fix all other versions except 5.8, where MRO::Compat isn't installed
+
 0.06 - 2022-12-20
   - Better error reporting for bad arguments to ->put_file
   - cpanfile and GitHub CI

@@ -8,7 +8,7 @@ use File::Spec 3.33;
 use File::Spec::Functions 'catfile', 'catdir', 'canonpath';
 use File::Temp 0.22 ();
 
-our $VERSION = '0.06';
+our $VERSION = '0.07';
 our @CARP_NOT= qw( DataStore::CAS DataStore::CAS::File DataStore::CAS::VirtualHandle );
 
 # ABSTRACT: Simple file/directory based CAS implementation
@@ -250,7 +250,7 @@ sub _hierarchy_version {
 	my $class= ref $_[0] || $_[0];
 	my $out= '';
 	# record the version of any class hierarchy which "isa DataStore::CAS::Simple"
-	require MRO::Compat if $] < 5.10;
+	require MRO::Compat if $] < 5.010;
 	my $hier= mro::get_linear_isa($class);
 	for (grep $_->isa(__PACKAGE__), @$hier) {
 		if (!$_->VERSION) {
