@@ -9,8 +9,8 @@ our $VERSION= '0.07';
   use Moo;
   extends 'DataStore::CAS::Simple'; # or whichever backend you want
   with 'DataStore::CAS::CatalystControllerSimpleCASAdapter';
-  
-  
+  with 'Catalyst::Controller::SimpleCAS::Store';
+
   package MyCatalystApp;
   ...
   __PACKAGE__->config(
@@ -25,9 +25,10 @@ our $VERSION= '0.07';
 =head1 DESCRIPTION
 
 This Role allows you to use a DataStore::CAS object as the back-end for
-L<Catalyst::Controller::SimpleCAS>.  It extends
-L<Catalyst::Controller::SimpleCAS::Store> and implements the SimpleCAS
-methods using the equivalent methods of L<DataStore::CAS>.
+L<Catalyst::Controller::SimpleCAS>.  It supplies all the methods required for
+the L<Catalyst::Controller::SimpleCAS::Store> role, and supplies better
+implementations for some of the methods that ::SimpleCAS::Store would normally
+provide, so it needs added first from a separate 'with' statement.
 
 =for Pod::Coverage content_exists content_size checksum_to_path fetch_content fetch_content_fh calculate_checksum file_checksum add_content add_content_file add_content_file_mv
 
@@ -35,7 +36,8 @@ methods using the equivalent methods of L<DataStore::CAS>.
 
 use Carp;
 use Moo::Role;
-with 'Catalyst::Controller::SimpleCAS::Store';
+
+requires qw( get calculate_hash calculate_file_hash put_scalar put_file );
 
 sub content_exists {
 	my ($self, $checksum)= @_;
