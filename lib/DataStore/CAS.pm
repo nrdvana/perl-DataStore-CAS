@@ -1,10 +1,10 @@
 package DataStore::CAS;
 use 5.008;
-use Moo::Role;
 use Carp;
 use Try::Tiny;
 require Scalar::Util;
 require Symbol;
+use Moo::Role;
 
 our $VERSION= '0.07';
 our @CARP_NOT= qw( DataStore::CAS::File DataStore::CAS::VirtualHandle );
