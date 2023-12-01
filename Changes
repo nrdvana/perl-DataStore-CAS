@@ -1,3 +1,12 @@
+0.08 - 2023-12-01
+  - Fix Catalyst::Controller::SimpleCAS adaptor to accept 'simplecas' attribute
+  - Standardize on 'cas' attribute for sub-objects:
+    - VirtualHandle attribute '_cas' => 'cas'
+    - File attribute 'store' => 'cas'
+    (but keep old names as aliases, for back-compat)
+  - Avoid undef exceptions during global destruction if cas object gets freed
+    before sub-objects.
+
 0.07 - 2022-12-23
   - Stop role-exporting accidental functions in DataStore::CAS role
   - Fix all other versions except 5.8, where MRO::Compat isn't installed

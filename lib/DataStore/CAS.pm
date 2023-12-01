@@ -6,7 +6,7 @@ require Scalar::Util;
 require Symbol;
 use Moo::Role;
 
-our $VERSION= '0.07';
+our $VERSION= '0.08';
 our @CARP_NOT= qw( DataStore::CAS::File DataStore::CAS::VirtualHandle );
 
 # ABSTRACT: Abstract base class for Content Addressable Storage
@@ -673,7 +673,7 @@ package DataStore::CAS::File;
 use strict;
 use warnings;
 
-our $VERSION= '0.07';
+our $VERSION= '0.08';
 
 sub cas { $_[0]{store} }
 *store= *cas; # back-compat
@@ -711,7 +711,7 @@ package DataStore::CAS::VirtualHandle;
 use strict;
 use warnings;
 
-our $VERSION= '0.07';
+our $VERSION= '0.08';
 
 sub new {
 	my ($class, $cas, $fields)= @_;
@@ -818,7 +818,7 @@ use strict;
 use warnings;
 use parent -norequire => 'DataStore::CAS::VirtualHandle';
 
-our $VERSION= '0.07';
+our $VERSION= '0.08';
 
 # For write-handles, commit data to the CAS and return the digest hash for it.
 sub commit   { $_[0]->_cas->commit_write_handle(@_) }

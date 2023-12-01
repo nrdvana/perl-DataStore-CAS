@@ -1,11 +1,11 @@
 package DataStore::CAS::Virtual;
 use 5.008;
-use Moo 1.000007;
+use Moo 1.000.08;
 use Carp;
 use Try::Tiny;
 use Digest 1.16;
 
-our $VERSION= '0.07';
+our $VERSION= '0.08';
 
 # ABSTRACT: In-memory CAS for debugging and testing
 

@@ -1,6 +1,6 @@
 package DataStore::CAS::CatalystControllerSimpleCASAdapter;
 
-our $VERSION= '0.07';
+our $VERSION= '0.08';
 #ABSTRACT: Moo Role providing compatibility for Catalyst::Controller::SimpleCAS
 
 =head1 SYNOPSIS
