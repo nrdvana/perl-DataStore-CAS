@@ -13,7 +13,7 @@ see the documentation for your particular store.
 
 =head1 ATTRIBUTES
 
-=head2 store
+=head2 cas
 
 Read-only attribute; Reference to the L<DataStore::CAS> which created this file.
 
@@ -31,16 +31,16 @@ Read-only attribute; The length of the file, in bytes.
 
   $handle= $file->open( %flags | \%flags )
 
-A convenience method to call C<$file-E<gt>store-E<gt>open_file($file, \%flags)>.
+A convenience method to call C<$file-E<gt>cas-E<gt>open_file($file, \%flags)>.
 
 =head1 IMPLEMENTATION
 
 File objects are equipped with an AUTOLOAD which passes all unknown function
-calls to C<$file-E<gt>store-E<gt>_file_$METHODNAME($file, @_)>.
+calls to C<$file-E<gt>cas-E<gt>_file_$METHODNAME($file, @_)>.
 
 This allows stores to use the built-in File objects without a lot of delegation.
 
-File objects also come with a DESTROY which calls C<$file-E<gt>store-E<gt>_file_destroy($file)>
+File objects also come with a DESTROY which calls C<$file-E<gt>cas-E<gt>_file_destroy($file)>
 
 =cut
 

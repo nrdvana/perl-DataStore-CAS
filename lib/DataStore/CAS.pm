@@ -675,30 +675,32 @@ use warnings;
 
 our $VERSION= '0.07';
 
-sub store { $_[0]{store} }
+sub cas { $_[0]{store} }
+*store= *cas; # back-compat
 sub hash  { $_[0]{hash} }
 sub size  { $_[0]{size} }
 
 sub open {
 	my $self= shift;
-	return $self->{store}->open_file($self)
+	return $self->cas->open_file($self)
 		if @_ == 0;
-	return $self->{store}->open_file($self, { @_ })
+	return $self->cas->open_file($self, { @_ })
 		if @_ > 1;
-	return $self->{store}->open_file($self, { layer => $_[0] })
+	return $self->cas->open_file($self, { layer => $_[0] })
 		if @_ == 1 and !ref $_[0];
 	Carp::croak "Wrong arguments to 'open'";
 };
 
 sub DESTROY {
-	$_[0]{store}->_file_destroy(@_);
+	my $cas= $_[0]->cas;
+	$cas->_file_destroy(@_) if defined $cas; # simple guard against global destruction
 }
 
 our $AUTOLOAD;
 sub AUTOLOAD {
 	my $attr= substr($AUTOLOAD, rindex($AUTOLOAD, ':')+1);
 	return $_[0]{$attr} if exists $_[0]{$attr};
-	unshift @_, $_[0]{store};
+	unshift @_, $_[0]->cas;
 	goto (
 		$_[0]->can("_file_$attr")
 		or Carp::croak "Can't locate object method \"_file_$attr\" via package \"".ref($_[0]).'"'
@@ -715,18 +717,22 @@ sub new {
 	my ($class, $cas, $fields)= @_;
 	my $glob= bless Symbol::gensym(), $class;
 	${*$glob}= $cas;
-	%{*$glob}= %{$fields||{}};
+	%{*$glob}= %$fields if defined $fields;
 	tie *$glob, $glob;
 	$glob;
 }
 sub TIEHANDLE { return $_[0]; }
 
-sub _cas  { ${*${$_[0]}} }  # the scalar view of the symbol points to the CAS object
+sub cas { ${*${$_[0]}} }  # the scalar view of the symbol points to the CAS object
+*_cas= *cas; # back-compat
 sub _data { \%{*${$_[0]}} } # the hashref view of the symbol holds the fields of the handle
 
-sub DESTROY { unshift @_, ${*{$_[0]}}; goto $_[0]->can('_handle_destroy') }
+sub DESTROY {
+	my $cas= $_[0]->cas;
+	$cas->_handle_destroy(@_) if defined $cas; # simple guard against global destruction
+}
 
-# By default, any method not defined will call to C<$cas->_handle_$method( $handle, @args );>
+# By default, any method not defined will call to $cas->_handle_$method( $handle, @args );
 our $AUTOLOAD;
 sub AUTOLOAD {
 	unshift @_, ${*${$_[0]}}; # unshift @_, $self->_cas

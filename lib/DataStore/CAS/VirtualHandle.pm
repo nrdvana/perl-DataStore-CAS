@@ -31,13 +31,13 @@ implementations though:
 =head2 new
 
   $handle= $class->new( $cas_instance, \%data )
-  # cas_instance is now found in $handle->_cas
-  # a copy of \%data is now found in $handle->_data
+  # cas_instance is now found in $handle->cas
+  # a shallow copy of %data is now found in $handle->_data
 
 Creates a new VirtualHandle object.  Blesses the globref and all that ugly
 stuff.  Stores a reference to a CAS and some arbitrary fields for you.
 
-=head2 _cas
+=head2 cas
 
 The L<CAS instance|DataStore::CAS> this handle belongs to.
 
@@ -91,7 +91,7 @@ because it appears I would have to re-implement the layers from scratch.
 You also cannot use sysread/syswrite on them.  (there doesn't appear to be any
 way to capture those calls with the TIE interface.)
 
-These objects to not actually inherit from IO::Handle, because loading
+These objects do not actually inherit from IO::Handle, because loading
 IO::Handle in a program that doesn't intend to use it is wasteful, and because
 it would make these objects appear to have methods which they don't support.
 
