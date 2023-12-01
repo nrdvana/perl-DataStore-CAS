@@ -17,6 +17,8 @@ see the documentation for your particular store.
 
 Read-only attribute; Reference to the L<DataStore::CAS> which created this file.
 
+=for Pod::Coverage store
+
 =head2 hash
 
 Read-only attribute; The digest hash of the bytes of this file.
