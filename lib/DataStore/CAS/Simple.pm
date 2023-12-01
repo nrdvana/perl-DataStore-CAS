@@ -126,7 +126,7 @@ sub BUILD {
 
 	# Check for invalid params
 	my @inval= grep { !$self->can($_) } keys %$args;
-	croak "Invalid parameter: ".join(', ', @inval)
+	carp "Invalid parameter: ".join(', ', @inval)
 		if @inval;
 
 	# Path is required, and must be a directory

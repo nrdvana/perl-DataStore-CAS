@@ -39,6 +39,10 @@ use Moo::Role;
 
 requires qw( get calculate_hash calculate_file_hash put_scalar put_file );
 
+# SimpleCAS passes this argument, and our constructor checks for unknown
+# arguments, so just store it in a weak attribute.
+has simplecas => ( is => 'rw', weak_ref => 1 );
+
 sub content_exists {
 	my ($self, $checksum)= @_;
 	return !!$self->get($checksum);
